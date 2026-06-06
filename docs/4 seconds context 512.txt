@@ -1,0 +1,30 @@
+  4_seconds, context 512, span 0.0237일:
+    활성화 없음
+
+  minutely, context 512, span 0.3556일:
+    활성화 없음
+
+  5_minutes, context 512, span 1.7778일:
+    daily
+
+  10_minutes, context 512, span 3.5556일:
+    daily
+
+  15_minutes, context 512, span 5.3333일:
+    daily
+
+  half_hourly, context 512, span 10.6667일:
+    daily, weekly
+
+  hourly, context 512, span 21.3333일:
+    daily, weekly
+
+  daily, context 512, span 512일:
+    weekly, yearly
+
+  weekly, context 256, span 1792일:
+    yearly
+
+  monthly, context 64, span 1948일:
+  yearly
+

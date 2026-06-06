@@ -1,0 +1,94 @@
+{
+  "description": "Domain-specific LOTSA cache groups for real-data fine-tuning. Evaluation target datasets are intentionally excluded from their own training pools.",
+  "targets": {
+    "elecdemand": {
+      "domain": "energy",
+      "train_subsets": [
+        "australian_electricity_demand",
+        "gfc12_load",
+        "gfc14_load",
+        "gfc17_load",
+        "lcl",
+        "london_smart_meters_with_missing",
+        "residential_load_power",
+        "residential_pv_power",
+        "solar_power",
+        "wind_power"
+      ]
+    },
+    "ETTh1": {
+      "domain": "energy",
+      "train_subsets": [
+        "australian_electricity_demand",
+        "gfc12_load",
+        "gfc14_load",
+        "gfc17_load",
+        "lcl",
+        "london_smart_meters_with_missing",
+        "residential_load_power",
+        "residential_pv_power",
+        "solar_power",
+        "wind_power"
+      ]
+    },
+    "oikolab_weather": {
+      "domain": "climate",
+      "train_subsets": [
+        "beijing_air_quality",
+        "china_air_quality",
+        "weather"
+      ]
+    },
+    "saugeenday": {
+      "domain": "nature",
+      "train_subsets": [
+        "subseasonal",
+        "subseasonal_precip",
+        "sunspot_with_missing",
+        "wind_farms_with_missing"
+      ]
+    },
+    "us_births": {
+      "domain": "healthcare",
+      "train_subsets": [
+        "us_births",
+        "project_tycho"
+      ]
+    },
+    "PEMS03": {
+      "domain": "transport",
+      "train_subsets": [
+        "HZMETRO",
+        "LOOP_SEATTLE",
+        "LOS_LOOP",
+        "PEMS04",
+        "PEMS07",
+        "PEMS08",
+        "PEMS_BAY",
+        "Q-TRAFFIC",
+        "SHMETRO",
+        "SZ_TAXI",
+        "traffic_hourly",
+        "uber_tlc_hourly"
+      ]
+    },
+    "pedestrian_counts": {
+      "domain": "econfin",
+      "train_subsets": [
+        "bitcoin_with_missing",
+        "bull",
+        "m4_daily",
+        "m4_monthly",
+        "m4_weekly"
+      ]
+    },
+    "alibaba_cluster_trace_2018": {
+      "domain": "cloudops",
+      "train_subsets": [
+        "borealis",
+        "kdd2022",
+        "kdd_cup_2018_with_missing"
+      ]
+    }
+  }
+}

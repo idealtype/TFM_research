@@ -1,0 +1,55 @@
+global:
+  context_len: 512
+  horizons: [96, 192, 336, 720]
+  n_samples: 1000
+  seed: 42
+
+trend_levels:
+  T1:
+    intent: "monotonic upward trend"
+    pool_pos: [0.5, 1.0, 1.5, 2.0]
+  T2:
+    intent: "monotonic downward trend"
+    pool_neg: [-0.5, -1.0, -1.5, -2.0]
+  T3:
+    intent: "flat baseline"
+  T4:
+    intent: "single breakpoint with consistent net direction"
+    pool_free: [-2.0, -1.0, -0.5, 0.5, 1.0, 2.0]
+    horizon_break_prob: 0.35
+  T5:
+    intent: "upward trend with one gentle direction change"
+    pool_pos: [0.5, 1.0, 1.5, 2.0]
+    pool_pos_soft: [0.1, 0.3, 0.5, 0.8, 1.0]
+    horizon_break_prob: 0.35
+  T6:
+    intent: "downward trend with one gentle direction change"
+    pool_neg: [-0.5, -1.0, -1.5, -2.0]
+    pool_neg_soft: [-0.1, -0.3, -0.5, -0.8, -1.0]
+    horizon_break_prob: 0.35
+
+seasonal_levels:
+  N_FOURIER_TERMS_MAX: {daily: 2, weekly: 2, monthly: 2, yearly: 8}
+  amplitude: 1.0
+  decay_alpha: 1.0
+
+  # SM1-SM8: granularity = daily
+  # SM9-SM10: granularity = hourly
+  SM1:  {active: [monthly],                 n_terms: {monthly: 1}}
+  SM2:  {active: [monthly],                 n_terms: {monthly: 2}}
+  SM3:  {active: [weekly, monthly],         n_terms: {weekly: 1, monthly: 1}}
+  SM4:  {active: [weekly, monthly],         n_terms: {weekly: 2, monthly: 2}}
+  SM5:  {active: [monthly, yearly],         n_terms: {monthly: 1, yearly: 1}}
+  SM6:  {active: [monthly, yearly],         n_terms: {monthly: 1, yearly: 4}}
+  SM7:  {active: [weekly, monthly, yearly], n_terms: {weekly: 1, monthly: 1, yearly: 1}}
+  SM8:  {active: [weekly, monthly, yearly], n_terms: {weekly: 2, monthly: 2, yearly: 4}}
+  SM9:  {active: [monthly],                 n_terms: {monthly: 2}}
+  SM10: {active: [daily, monthly],          n_terms: {daily: 1, monthly: 2}}
+
+  # SM11-SM12: granularity = hourly (missing combinations)
+  SM11: {active: [weekly, monthly],                  n_terms: {weekly: 2, monthly: 2}}
+  SM12: {active: [daily, weekly, monthly],           n_terms: {daily: 2, weekly: 2, monthly: 2}}
+
+  # SM13-SM14: granularity = weekly (no SM data existed for weekly)
+  SM13: {active: [monthly],                          n_terms: {monthly: 2}}
+  SM14: {active: [monthly, yearly],                  n_terms: {monthly: 2, yearly: 4}}

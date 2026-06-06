@@ -1,0 +1,62 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Data and caches
+data/**
+!data/.gitkeep
+cache/
+caches/
+dataset/
+datasets/
+*.npy
+*.npz
+*.csv
+*.parquet
+*.pkl
+*.pickle
+
+# Experiment outputs
+results/
+outputs/
+runs/
+logs/
+wandb/
+mlruns/
+plots/
+tables/
+
+# Checkpoints and model weights
+checkpoints/
+weights/
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.onnx
+
+# Archives
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.7z
+*.rar
+
+# Media and reports generated from results
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.pdf
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini

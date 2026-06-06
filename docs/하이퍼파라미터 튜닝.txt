@@ -1,0 +1,14 @@
+
+
+
+컨텍스트 마크다운 파일, 그리고 4.28basis 폴더에 있는 마크다운 파일을 읽고 프로젝트 성격 확인해. 이후 data 폴더와 4.28폴더의 파이썬 파일의 코드만 읽고 전체 폴더 구조와 성격 확인해. 이후 작업 지시 대기. 완료되면 설명하지 말고 확인만 출력
+
+
+
+  
+복잡 평가
+
+bash basis_dec/experiment/func_dec_syn_cent/run_eval_complex_on_complex.sh
+
+단순 평가 
+bash basis_dec/experiment/func_dec_syn_cent/run_eval_simple_on_complex.sh
