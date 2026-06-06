@@ -10,6 +10,11 @@ import time
 from collections import OrderedDict
 from pathlib import Path
 
+THIS_FILE = Path(__file__).resolve()
+EXPERIMENTS_ROOT = next(parent for parent in THIS_FILE.parents if (parent / "loader_utils.py").exists())
+sys.path.insert(0, str(EXPERIMENTS_ROOT))
+from loader_utils import resolve_data_path, resolve_project_path  # noqa: E402
+
 os.environ.setdefault("MPLCONFIGDIR", "/tmp/matplotlib")
 os.environ.setdefault("MPLBACKEND", "Agg")
 
@@ -20,8 +25,8 @@ from torch.nn.utils import clip_grad_norm_
 
 
 THIS_DIR = Path(__file__).resolve().parent
-OLD_EXP_DIR = Path("/home/sia2/project/4.28basis/basis_dec/experiment/func_dec_syn_cent")
-PROJECT_ROOT = Path("/home/sia2/project/4.28basis")
+OLD_EXP_DIR = resolve_project_path("/home/sia2/project/4.28basis/basis_dec/experiment/func_dec_syn_cent")
+PROJECT_ROOT = resolve_project_path("/home/sia2/project/4.28basis")
 SRC_DIR = PROJECT_ROOT / "src"
 for path in [PROJECT_ROOT, SRC_DIR, OLD_EXP_DIR]:
     if str(path) not in sys.path:
@@ -34,7 +39,7 @@ from single_model_eval_common import load_basis_file, build_fourier_basis, to_js
 DEFAULT_INIT_CHECKPOINT_DIR = Path(
     "/home/sia2/project/5.22syn_cent/train_nonF_rawtarget/results/train/nonfourier_finetune_from_simple_complex"
 )
-DEFAULT_LOTSA_CACHE_ROOT = Path("/home/sia2/project/data/data_lotsa/lotsa_cache")
+DEFAULT_LOTSA_CACHE_ROOT = resolve_data_path("/home/sia2/project/data/data_lotsa/lotsa_cache")
 DEFAULT_RESULTS_DIR = THIS_DIR / "results" / "train" / "domain_real_finetune"
 DEFAULT_DOMAIN_CONFIG = THIS_DIR / "domain_config.json"
 HORIZONS = [96, 192, 336, 720]

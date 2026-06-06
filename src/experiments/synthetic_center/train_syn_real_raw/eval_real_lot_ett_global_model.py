@@ -10,8 +10,11 @@ from torch.utils.data import DataLoader
 
 
 THIS_DIR = Path(__file__).resolve().parent
-OLD_EXP_DIR = Path("/home/sia2/project/4.28basis/basis_dec/experiment/func_dec_syn_cent")
-PROJECT_ROOT = Path("/home/sia2/project/4.28basis")
+EXPERIMENTS_ROOT = next(parent for parent in THIS_DIR.parents if (parent / "loader_utils.py").exists())
+sys.path.insert(0, str(EXPERIMENTS_ROOT))
+from loader_utils import add_runtime_args, dataloader_kwargs, resolve_data_path, resolve_project_path  # noqa: E402
+OLD_EXP_DIR = resolve_project_path("/home/sia2/project/4.28basis/basis_dec/experiment/func_dec_syn_cent")
+PROJECT_ROOT = resolve_project_path("/home/sia2/project/4.28basis")
 SRC_DIR = PROJECT_ROOT / "src"
 for path in [PROJECT_ROOT, SRC_DIR, OLD_EXP_DIR]:
     if str(path) not in sys.path:
@@ -66,12 +69,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--device", default="cuda:0")
     parser.add_argument("--hf_cache_dir", type=str, default=None)
     parser.add_argument("--skip_tfm", action="store_true")
+    add_runtime_args(parser)
     return parser.parse_args()
 
 
 @torch.no_grad()
-def evaluate_without_tfm(model, dataset: RealCacheDataset, batch_size: int, device: torch.device, plot_limit: int):
-    loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=0, collate_fn=collate)
+def evaluate_without_tfm(model, dataset: RealCacheDataset, batch_size: int, device: torch.device, plot_limit: int, args: argparse.Namespace):
+    loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, collate_fn=collate, **dataloader_kwargs(args, device))
     acc = metric_accumulator()
     plot_items = []
     for batch in loader:
@@ -138,7 +142,7 @@ def run(args: argparse.Namespace) -> None:
                 hf_cache_dir=args.hf_cache_dir,
             )
             if args.skip_tfm:
-                metrics, plot_items = evaluate_without_tfm(model, dataset, args.batch_size, device, args.plot_samples_per_dataset)
+                metrics, plot_items = evaluate_without_tfm(model, dataset, args.batch_size, device, args.plot_samples_per_dataset, args)
             else:
                 metrics, plot_items = evaluate_dataset(
                     model, tfm_by_horizon[horizon], dataset, args.batch_size, device, args.plot_samples_per_dataset

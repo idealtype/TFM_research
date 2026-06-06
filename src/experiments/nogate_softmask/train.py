@@ -33,11 +33,14 @@ from torch.nn.utils import clip_grad_norm_
 from torch.utils.data import DataLoader, Dataset
 
 THIS_DIR = Path(__file__).resolve().parent
-PROJECT_ROOT_4_28 = Path("/home/sia2/project/4.28basis")
+EXPERIMENTS_ROOT = THIS_DIR.parent
+sys.path.insert(0, str(EXPERIMENTS_ROOT))
+from loader_utils import add_runtime_args, dataloader_kwargs, resolve_data_path, resolve_project_path  # noqa: E402
+PROJECT_ROOT_4_28 = resolve_project_path("/home/sia2/project/4.28basis")
 SRC_DIR = PROJECT_ROOT_4_28 / "src"
 OLD_EXP_DIR = PROJECT_ROOT_4_28 / "basis_dec" / "experiment" / "func_dec_syn_cent"
-NONF_TRAIN_DIR = Path("/home/sia2/project/5.22syn_cent/train_nonF_rawtarget")
-REAL_TRAIN_DIR = Path("/home/sia2/project/5.22syn_cent/train_syn_real_raw")
+NONF_TRAIN_DIR = resolve_project_path("/home/sia2/project/5.22syn_cent/train_nonF_rawtarget")
+REAL_TRAIN_DIR = resolve_project_path("/home/sia2/project/5.22syn_cent/train_syn_real_raw")
 
 # Keep THIS_DIR first even when Python already inserted the script directory.
 # Otherwise older model/ packages on sys.path can shadow the fine_mask model.
@@ -64,12 +67,12 @@ HORIZONS = [96, 192, 336, 720]
 
 DEFAULT_INIT_CHECKPOINT_DIR = Path("none")  # from scratch: no initial checkpoint
 DEFAULT_RESULTS_ROOT = THIS_DIR / "results"
-DEFAULT_LOTSA_CACHE_ROOT = Path("/home/sia2/project/data/data_lotsa/lotsa_cache")
+DEFAULT_LOTSA_CACHE_ROOT = resolve_data_path("/home/sia2/project/data/data_lotsa/lotsa_cache")
 
 # Synth Fourier cache roots (old S1-S10 + new SM1-SM10)
 FOURIER_SYNTH_CACHE_ROOTS = [
-    Path("/home/sia2/project/data/synthetic/func_dec_syn_cent_complex_train_cache_10_4_8_fixed_phase_scale"),
-    Path("/home/sia2/project/data/synthetic/func_dec_syn_cent_fine_mask_train_cache_10_4_2_8"),
+    resolve_data_path("/home/sia2/project/data/synthetic/func_dec_syn_cent_complex_train_cache_10_4_8_fixed_phase_scale"),
+    resolve_data_path("/home/sia2/project/data/synthetic/func_dec_syn_cent_fine_mask_train_cache_10_4_2_8"),
 ]
 
 # nonF cache roots
@@ -78,7 +81,7 @@ NONF_STAGE_CACHE_DIRS = {
     "stage2_T_S": "stage2_T_S_nonfourier_cache_10_4_8",
     "stage3_T_S_R": "stage3_T_S_R_nonfourier_cache_10_4_8",
 }
-NONF_TRAIN_ROOT = Path("/home/sia2/project/data/synthetic_nonF/synth_train_nonfourier")
+NONF_TRAIN_ROOT = resolve_data_path("/home/sia2/project/data/synthetic_nonF/synth_train_nonfourier")
 
 COMPLEX_CACHE_RE = re.compile(
     r"^(?:A\d+_)?(?:T\d+_)?(?:\w+\d+_)?(?P<granularity>\w+?)_seed\d+_c\d+_h\d+$"
@@ -121,6 +124,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--skip_fourier", action="store_true")
     parser.add_argument("--skip_nonf", action="store_true")
     parser.add_argument("--skip_real", action="store_true")
+    add_runtime_args(parser)
     return parser.parse_args()
 
 
@@ -550,8 +554,13 @@ def train_nonf(model: FuncDecModel, items: list[tuple[Path, dict]], steps: int,
     ds = NonFDataset(items, "train", 0.1,
                      length=int(steps) * args.nonf_batch_size,
                      seed=args.seed + horizon * 17)
-    loader = DataLoader(ds, batch_size=args.nonf_batch_size, shuffle=False,
-                        num_workers=0, collate_fn=nonf_collate)
+    loader = DataLoader(
+        ds,
+        batch_size=args.nonf_batch_size,
+        shuffle=False,
+        collate_fn=nonf_collate,
+        **dataloader_kwargs(args, device),
+    )
 
     history = []
     model.train()

@@ -15,7 +15,10 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 
 THIS_DIR = Path(__file__).resolve().parent
-PROJECT_ROOT_4_28 = Path("/home/sia2/project/4.28basis")
+EXPERIMENTS_ROOT = THIS_DIR.parent
+sys.path.insert(0, str(EXPERIMENTS_ROOT))
+from loader_utils import add_runtime_args, dataloader_kwargs, resolve_data_path, resolve_project_path  # noqa: E402
+PROJECT_ROOT_4_28 = resolve_project_path("/home/sia2/project/4.28basis")
 SRC_DIR = PROJECT_ROOT_4_28 / "src"
 
 for path in [SRC_DIR, PROJECT_ROOT_4_28, THIS_DIR]:
@@ -48,8 +51,8 @@ DEFAULT_RESULTS_ROOT = THIS_DIR / "results" / "fourier_synth"
 MODEL_NAME = "fine_mask"
 
 EVAL_ROOTS = [
-    Path("/home/sia2/project/data/synthetic/func_dec_syn_cent_complex_eval_cache_10_4_8_fixed_phase_scale"),
-    Path("/home/sia2/project/data/synthetic/func_dec_syn_cent_fine_mask_eval_cache_10_4_2_8"),
+    resolve_data_path("/home/sia2/project/data/synthetic/func_dec_syn_cent_complex_eval_cache_10_4_8_fixed_phase_scale"),
+    resolve_data_path("/home/sia2/project/data/synthetic/func_dec_syn_cent_fine_mask_eval_cache_10_4_2_8"),
 ]
 
 CACHE_DIR_RE = re.compile(
@@ -76,6 +79,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--skip_tfm", action="store_true")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--device", default=os.environ.get("DEVICE", "cuda:0"))
+    add_runtime_args(parser)
     return parser.parse_args()
 
 
@@ -228,9 +232,14 @@ def discover_groups(eval_roots: list[Path], horizon: int,
 
 @torch.no_grad()
 def evaluate_group(model, tfm_model, dataset: FourierSynthDataset, batch_size: int,
-                   device: torch.device) -> dict:
-    loader = DataLoader(dataset, batch_size=batch_size, shuffle=False,
-                        num_workers=0, collate_fn=collate)
+                   device: torch.device, args: argparse.Namespace) -> dict:
+    loader = DataLoader(
+        dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        collate_fn=collate,
+        **dataloader_kwargs(args, device),
+    )
     acc = metric_accumulator()
     trend_acc = metric_accumulator()
     seasonal_acc = metric_accumulator()
@@ -309,7 +318,7 @@ def run(args: argparse.Namespace) -> None:
                 log_progress(f"  skip {ds_dir.name}: {exc}")
                 continue
 
-            metrics, plot_items = evaluate_group(model, tfm_model, dataset, args.batch_size, device)
+            metrics, plot_items = evaluate_group(model, tfm_model, dataset, args.batch_size, device, args)
             rows.append({
                 "composition": meta["composition"],
                 "trend_level": meta["trend_level"],

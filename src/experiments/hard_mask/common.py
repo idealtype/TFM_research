@@ -20,7 +20,10 @@ import torch
 
 
 THIS_DIR = Path(__file__).resolve().parent
-PROJECT_ROOT_4_28 = Path("/home/sia2/project/4.28basis")
+EXPERIMENTS_ROOT = THIS_DIR.parent
+sys.path.insert(0, str(EXPERIMENTS_ROOT))
+from loader_utils import resolve_project_path  # noqa: E402
+PROJECT_ROOT_4_28 = resolve_project_path("/home/sia2/project/4.28basis")
 SRC_DIR = PROJECT_ROOT_4_28 / "src"
 for path in [THIS_DIR, PROJECT_ROOT_4_28, SRC_DIR]:
     path_s = str(path)

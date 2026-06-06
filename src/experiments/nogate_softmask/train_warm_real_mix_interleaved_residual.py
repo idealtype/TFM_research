@@ -70,6 +70,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--device", default=os.environ.get("DEVICE", "cuda:0"))
     parser.add_argument("--skip_existing", action="store_true")
+    base.add_runtime_args(parser)
     parser.add_argument("--allow_checkpoint_init", action="store_true",
                         help="Allow warm-starting from --init_checkpoint_dir. Disabled by default for fair scratch comparisons.")
     return parser.parse_args()

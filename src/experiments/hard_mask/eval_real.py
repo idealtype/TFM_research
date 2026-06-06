@@ -14,10 +14,13 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 
 THIS_DIR = Path(__file__).resolve().parent
-PROJECT_ROOT_4_28 = Path("/home/sia2/project/4.28basis")
+EXPERIMENTS_ROOT = THIS_DIR.parent
+sys.path.insert(0, str(EXPERIMENTS_ROOT))
+from loader_utils import add_runtime_args, dataloader_kwargs, resolve_data_path, resolve_project_path  # noqa: E402
+PROJECT_ROOT_4_28 = resolve_project_path("/home/sia2/project/4.28basis")
 SRC_DIR = PROJECT_ROOT_4_28 / "src"
 OLD_EXP_DIR = PROJECT_ROOT_4_28 / "basis_dec" / "experiment" / "func_dec_syn_cent"
-DATA_LOTSA_DIR = Path("/home/sia2/project/data/data_lotsa")
+DATA_LOTSA_DIR = resolve_data_path("/home/sia2/project/data/data_lotsa")
 
 for path in [str(DATA_LOTSA_DIR), OLD_EXP_DIR, SRC_DIR, PROJECT_ROOT_4_28, THIS_DIR]:
     if str(path) not in sys.path:
@@ -46,7 +49,7 @@ from datasets import load_dataset  # noqa: E402
 from eval_real_lot_ett_single_model import target_values  # noqa: E402
 
 
-DEFAULT_REAL_ROOT = Path("/home/sia2/project/data/real_eval_lot_ett")
+DEFAULT_REAL_ROOT = resolve_data_path("/home/sia2/project/data/real_eval_lot_ett")
 DEFAULT_CHECKPOINT_ROOT = THIS_DIR / "results"
 DEFAULT_RESULTS_ROOT = THIS_DIR / "results" / "real_lot_ett"
 MODEL_NAME = "fine_mask"
@@ -70,6 +73,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--device", default=os.environ.get("DEVICE", "cuda:0"))
     parser.add_argument("--hf_cache_dir", type=str, default=None)
     parser.add_argument("--skip_tfm", action="store_true")
+    add_runtime_args(parser)
     return parser.parse_args()
 
 
@@ -290,9 +294,14 @@ def manifest_cache_dir(real_root: Path, item: dict) -> Path:
 
 @torch.no_grad()
 def evaluate_dataset(model, tfm_model, dataset: FineMaskRealDataset, batch_size: int,
-                     device: torch.device, plot_limit: int):
-    loader = DataLoader(dataset, batch_size=batch_size, shuffle=False,
-                        num_workers=0, collate_fn=collate)
+                     device: torch.device, plot_limit: int, args: argparse.Namespace):
+    loader = DataLoader(
+        dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        collate_fn=collate,
+        **dataloader_kwargs(args, device),
+    )
     acc = metric_accumulator()
     tfm_acc = metric_accumulator()
     no_res_acc = metric_accumulator()
@@ -421,7 +430,7 @@ def run(args: argparse.Namespace) -> None:
                 continue
 
             metrics, plot_items = evaluate_dataset(
-                model, tfm_model, dataset, args.batch_size, device, args.plot_samples_per_dataset
+                model, tfm_model, dataset, args.batch_size, device, args.plot_samples_per_dataset, args
             )
             rows.append({
                 "domain": domain,

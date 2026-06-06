@@ -15,7 +15,10 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 
 THIS_DIR = Path(__file__).resolve().parent
-PROJECT_ROOT_4_28 = Path("/home/sia2/project/4.28basis")
+EXPERIMENTS_ROOT = THIS_DIR.parent
+sys.path.insert(0, str(EXPERIMENTS_ROOT))
+from loader_utils import add_runtime_args, dataloader_kwargs, resolve_data_path, resolve_project_path  # noqa: E402
+PROJECT_ROOT_4_28 = resolve_project_path("/home/sia2/project/4.28basis")
 SRC_DIR = PROJECT_ROOT_4_28 / "src"
 
 for path in [SRC_DIR, PROJECT_ROOT_4_28, THIS_DIR]:
@@ -45,7 +48,7 @@ from common import (  # noqa: E402
 
 DEFAULT_CHECKPOINT_ROOT = THIS_DIR / "results"
 DEFAULT_RESULTS_ROOT = THIS_DIR / "results" / "nonfourier_synth"
-DEFAULT_NONF_EVAL_ROOT = Path("/home/sia2/project/data/synthetic_nonF/synth_eval_nonfourier")
+DEFAULT_NONF_EVAL_ROOT = resolve_data_path("/home/sia2/project/data/synthetic_nonF/synth_eval_nonfourier")
 MODEL_NAME = "soft_mask"
 
 STAGE_CACHE_DIRS = {
@@ -80,6 +83,7 @@ def parse_args() -> argparse.Namespace:
                         help="Do not run TimesFM during evaluation. This is the default.")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--device", default=os.environ.get("DEVICE", "cuda:0"))
+    add_runtime_args(parser)
     return parser.parse_args()
 
 
@@ -252,9 +256,14 @@ def discover_groups(nonf_eval_root: Path, horizon: int,
 
 
 @torch.no_grad()
-def evaluate_group(model, tfm_model, dataset: NonFEvalDataset, batch_size: int, device: torch.device) -> dict:
-    loader = DataLoader(dataset, batch_size=batch_size, shuffle=False,
-                        num_workers=0, collate_fn=collate)
+def evaluate_group(model, tfm_model, dataset: NonFEvalDataset, batch_size: int, device: torch.device, args: argparse.Namespace) -> dict:
+    loader = DataLoader(
+        dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        collate_fn=collate,
+        **dataloader_kwargs(args, device),
+    )
     acc = metric_accumulator()
     trend_acc = metric_accumulator()
     seasonal_acc = metric_accumulator()
@@ -338,7 +347,7 @@ def run(args: argparse.Namespace) -> None:
                 log_progress(f"  skip {ds_dir.name}: {exc}")
                 continue
 
-            metrics, plot_items = evaluate_group(model, tfm_model, dataset, args.batch_size, device)
+            metrics, plot_items = evaluate_group(model, tfm_model, dataset, args.batch_size, device, args)
             row = {
                 "stage": meta["stage"],
                 "generator": meta.get("generator", ""),

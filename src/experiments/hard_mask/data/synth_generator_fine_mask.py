@@ -6,13 +6,18 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+
+THIS_FILE = Path(__file__).resolve()
+EXPERIMENTS_ROOT = next(parent for parent in THIS_FILE.parents if (parent / "loader_utils.py").exists())
+sys.path.insert(0, str(EXPERIMENTS_ROOT))
+from loader_utils import resolve_data_path, resolve_project_path  # noqa: E402
 from typing import Any
 
 import numpy as np
 import yaml
 
 # Re-export shared utilities from the original generator
-sys.path.insert(0, str(Path("/home/sia2/project/data/synthetic")))
+sys.path.insert(0, str(resolve_data_path("/home/sia2/project/data/synthetic")))
 from synth_generator import (  # noqa: E402
     EPS_SIGMA,
     LEVELS,

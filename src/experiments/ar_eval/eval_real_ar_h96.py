@@ -14,11 +14,14 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 
 THIS_DIR = Path(__file__).resolve().parent
-SOFT_MASK_DIR = Path("/home/sia2/project/5.30soft_mask")
-PROJECT_ROOT_4_28 = Path("/home/sia2/project/4.28basis")
+EXPERIMENTS_ROOT = THIS_DIR.parent
+sys.path.insert(0, str(EXPERIMENTS_ROOT))
+from loader_utils import add_runtime_args, dataloader_kwargs, resolve_data_path, resolve_project_path  # noqa: E402
+SOFT_MASK_DIR = resolve_project_path("/home/sia2/project/5.30soft_mask")
+PROJECT_ROOT_4_28 = resolve_project_path("/home/sia2/project/4.28basis")
 SRC_DIR = PROJECT_ROOT_4_28 / "src"
 OLD_EXP_DIR = PROJECT_ROOT_4_28 / "basis_dec" / "experiment" / "func_dec_syn_cent"
-DATA_LOTSA_DIR = Path("/home/sia2/project/data/data_lotsa")
+DATA_LOTSA_DIR = resolve_data_path("/home/sia2/project/data/data_lotsa")
 
 for path in [str(DATA_LOTSA_DIR), OLD_EXP_DIR, SRC_DIR, PROJECT_ROOT_4_28, SOFT_MASK_DIR, THIS_DIR]:
     if str(path) not in sys.path:
@@ -51,8 +54,8 @@ from eval_real_lot_ett_single_model import target_values  # noqa: E402
 from model.decomp_funcdec import FuncDecModel  # noqa: E402
 
 
-DEFAULT_REAL_ROOT = Path("/home/sia2/project/data/real_eval_lot_ett")
-DEFAULT_CHECKPOINT_ROOT = Path("/home/sia2/project/5.30soft_mask/results/fourier_warm_real_mix_scratch")
+DEFAULT_REAL_ROOT = resolve_data_path("/home/sia2/project/data/real_eval_lot_ett")
+DEFAULT_CHECKPOINT_ROOT = resolve_project_path("/home/sia2/project/5.30soft_mask/results/fourier_warm_real_mix_scratch")
 DEFAULT_RESULTS_ROOT = THIS_DIR / "results" / "ar_h96_real_lot_ett"
 DEFAULT_TIMESFM_METRICS_CSV = Path(
     "/home/sia2/project/5.30fine_mask/results/syn_and_alldata/real_lot_ett/real_eval_mae.csv"
@@ -85,6 +88,7 @@ def parse_args() -> argparse.Namespace:
                         help="Explicitly run TimesFM during evaluation. Default is disabled.")
     parser.add_argument("--skip_tfm", dest="skip_tfm", action="store_true",
                         help="Do not run TimesFM during evaluation. This is the default.")
+    add_runtime_args(parser)
     return parser.parse_args()
 
 
@@ -376,9 +380,14 @@ def forecast_ar_h96(model: FuncDecModel, contexts_raw: np.ndarray, target_horizo
 
 @torch.no_grad()
 def evaluate_dataset(model, tfm_model, dataset: FineMaskRealDataset, batch_size: int,
-                     device: torch.device, plot_limit: int):
-    loader = DataLoader(dataset, batch_size=batch_size, shuffle=False,
-                        num_workers=0, collate_fn=collate)
+                     device: torch.device, plot_limit: int, args: argparse.Namespace):
+    loader = DataLoader(
+        dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        collate_fn=collate,
+        **dataloader_kwargs(args, device),
+    )
     acc = metric_accumulator()
     tfm_acc = metric_accumulator()
     no_res_acc = metric_accumulator()

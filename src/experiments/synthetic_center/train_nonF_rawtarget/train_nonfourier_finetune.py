@@ -20,8 +20,11 @@ from torch.utils.data import DataLoader, Dataset
 
 
 THIS_DIR = Path(__file__).resolve().parent
-OLD_EXP_DIR = Path("/home/sia2/project/4.28basis/basis_dec/experiment/func_dec_syn_cent")
-PROJECT_ROOT = Path("/home/sia2/project/4.28basis")
+EXPERIMENTS_ROOT = next(parent for parent in THIS_DIR.parents if (parent / "loader_utils.py").exists())
+sys.path.insert(0, str(EXPERIMENTS_ROOT))
+from loader_utils import add_runtime_args, dataloader_kwargs, resolve_data_path, resolve_project_path  # noqa: E402
+OLD_EXP_DIR = resolve_project_path("/home/sia2/project/4.28basis/basis_dec/experiment/func_dec_syn_cent")
+PROJECT_ROOT = resolve_project_path("/home/sia2/project/4.28basis")
 SRC_DIR = PROJECT_ROOT / "src"
 for path in [PROJECT_ROOT, SRC_DIR, OLD_EXP_DIR]:
     if str(path) not in sys.path:
@@ -33,7 +36,7 @@ from model.decoder_seasonal import N_FOURIER_TERMS as HEAD_FOURIER_TERMS  # noqa
 from train_synth_only import to_jsonable  # noqa: E402
 
 
-DEFAULT_TRAIN_ROOT = Path("/home/sia2/project/data/synthetic_nonF/synth_train_nonfourier")
+DEFAULT_TRAIN_ROOT = resolve_data_path("/home/sia2/project/data/synthetic_nonF/synth_train_nonfourier")
 DEFAULT_INIT_CHECKPOINT_DIR = (
     OLD_EXP_DIR
     / "results"
@@ -388,8 +391,8 @@ def train_horizon(horizon: int, items: list[tuple[Path, dict]], args: argparse.N
         length=max(args.eval_batches * args.batch_size, args.batch_size),
         seed=args.seed + horizon * 31,
     )
-    train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=False, num_workers=0, pin_memory=device.type == "cuda", collate_fn=collate)
-    val_loader = DataLoader(val_ds, batch_size=args.batch_size, shuffle=False, num_workers=0, pin_memory=device.type == "cuda", collate_fn=collate)
+    train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=False, collate_fn=collate, **dataloader_kwargs(args, device))
+    val_loader = DataLoader(val_ds, batch_size=args.batch_size, shuffle=False, collate_fn=collate, **dataloader_kwargs(args, device))
 
     history = []
     started = time.perf_counter()
@@ -475,6 +478,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--device", default="cuda:0")
     parser.add_argument("--log_every", type=int, default=500)
     parser.add_argument("--save_checkpoint", action="store_true")
+    add_runtime_args(parser)
     return parser.parse_args()
 
 

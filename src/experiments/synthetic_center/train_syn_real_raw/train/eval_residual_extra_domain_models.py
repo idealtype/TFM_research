@@ -11,9 +11,12 @@ from torch.utils.data import DataLoader
 
 
 THIS_DIR = Path(__file__).resolve().parent
+EXPERIMENTS_ROOT = next(parent for parent in THIS_DIR.parents if (parent / "loader_utils.py").exists())
+sys.path.insert(0, str(EXPERIMENTS_ROOT))
+from loader_utils import add_runtime_args, dataloader_kwargs, resolve_data_path, resolve_project_path  # noqa: E402
 EXP_DIR = THIS_DIR.parent
-OLD_EXP_DIR = Path("/home/sia2/project/4.28basis/basis_dec/experiment/func_dec_syn_cent")
-PROJECT_ROOT = Path("/home/sia2/project/4.28basis")
+OLD_EXP_DIR = resolve_project_path("/home/sia2/project/4.28basis/basis_dec/experiment/func_dec_syn_cent")
+PROJECT_ROOT = resolve_project_path("/home/sia2/project/4.28basis")
 SRC_DIR = PROJECT_ROOT / "src"
 for path in [EXP_DIR, PROJECT_ROOT, SRC_DIR, OLD_EXP_DIR]:
     if str(path) not in sys.path:
@@ -80,6 +83,7 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Save only the extra-trained model metrics. Skips TimesFM, no-residual ablation, and diagnostic stats.",
     )
+    add_runtime_args(parser)
     return parser.parse_args()
 
 
@@ -93,7 +97,7 @@ def evaluate_dataset(
     plot_limit: int,
     model_only: bool,
 ):
-    loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=0, collate_fn=collate)
+    loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, collate_fn=collate, **dataloader_kwargs(args, device))
     full_acc = metric_accumulator()
     no_res_acc = metric_accumulator()
     tfm_acc = metric_accumulator()

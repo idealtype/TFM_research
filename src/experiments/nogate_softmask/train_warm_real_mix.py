@@ -28,7 +28,7 @@ from model.decomp_funcdec import FuncDecModel
 
 
 DEFAULT_INIT_CHECKPOINT_DIR = Path("none")
-DEFAULT_RESULTS_ROOT = Path("/home/sia2/project/6.1nogate_softmask/results/fourier_warm_real_mix_b1024_synth13_coeffl1")
+DEFAULT_RESULTS_ROOT = base.resolve_project_path("/home/sia2/project/6.1nogate_softmask/results/fourier_warm_real_mix_b1024_synth13_coeffl1")
 
 
 def parse_args() -> argparse.Namespace:
@@ -62,6 +62,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--device", default=os.environ.get("DEVICE", "cuda:0"))
     parser.add_argument("--skip_existing", action="store_true")
+    base.add_runtime_args(parser)
     return parser.parse_args()
 
 

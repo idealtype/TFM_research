@@ -11,13 +11,18 @@ import argparse
 import json
 import sys
 from pathlib import Path
+
+THIS_FILE = Path(__file__).resolve()
+EXPERIMENTS_ROOT = next(parent for parent in THIS_FILE.parents if (parent / "loader_utils.py").exists())
+sys.path.insert(0, str(EXPERIMENTS_ROOT))
+from loader_utils import resolve_data_path, resolve_project_path  # noqa: E402
 from typing import Any
 
 import numpy as np
 
 THIS_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(THIS_DIR))
-sys.path.insert(0, str(Path("/home/sia2/project/data/synthetic")))
+sys.path.insert(0, str(resolve_data_path("/home/sia2/project/data/synthetic")))
 
 from synth_generator import (  # noqa: E402
     EPS_SIGMA,
@@ -33,7 +38,7 @@ from synth_generator_fine_mask import (  # noqa: E402
 )
 
 
-ROOT = Path("/home/sia2/project/data/synthetic")
+ROOT = resolve_data_path("/home/sia2/project/data/synthetic")
 DEFAULT_TRAIN_OUTPUT = ROOT / "func_dec_syn_cent_fine_mask_train"
 DEFAULT_EVAL_OUTPUT = ROOT / "func_dec_syn_cent_fine_mask_eval"
 DEFAULT_CONFIG = THIS_DIR / "synth_config_fine_mask.yaml"

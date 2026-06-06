@@ -13,6 +13,8 @@ data/**
 !data/.gitkeep
 cache/
 caches/
+!src/experiments/hard_mask/cache/
+!src/experiments/hard_mask/cache/*.py
 dataset/
 datasets/
 *.npy

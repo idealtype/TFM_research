@@ -4,10 +4,15 @@ import argparse
 import json
 from pathlib import Path
 
+THIS_FILE = Path(__file__).resolve()
+EXPERIMENTS_ROOT = next(parent for parent in THIS_FILE.parents if (parent / "loader_utils.py").exists())
+sys.path.insert(0, str(EXPERIMENTS_ROOT))
+from loader_utils import resolve_data_path, resolve_project_path  # noqa: E402
+
 import torch
 
 
-DEFAULT_TRAIN_ROOT = Path("/home/sia2/project/data/synthetic_nonF/synth_train_nonfourier")
+DEFAULT_TRAIN_ROOT = resolve_data_path("/home/sia2/project/data/synthetic_nonF/synth_train_nonfourier")
 DEFAULT_OUTPUT_ROOT = Path("/home/sia2/project/5.22syn_cent/train_nonF_projtarget/projection_targets")
 STAGE_CACHE_DIRS = [
     "stage1_S_nonfourier_cache_10_4_8",
