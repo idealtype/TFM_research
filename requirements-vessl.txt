@@ -9,4 +9,3 @@ tqdm
 datasets
 pyarrow
 PyWavelets
-timesfm[torch]
