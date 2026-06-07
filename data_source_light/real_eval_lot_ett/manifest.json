@@ -1,0 +1,267 @@
+{
+  "output_root": "/workspace/data/real_eval_lot_ett",
+  "max_windows": 10000,
+  "seed": 42,
+  "min_context_sigma": 0.001,
+  "horizons": [
+    96,
+    192,
+    336,
+    720
+  ],
+  "datasets": [
+    {
+      "domain": "energy",
+      "dataset": "elecdemand",
+      "kind": "lotsa",
+      "source": "test_cache",
+      "source_dir": "/workspace/data/data_lotsa/lotsa_cache_test/elecdemand",
+      "output_dir": "/workspace/data/real_eval_lot_ett/energy/elecdemand",
+      "context_len": 512,
+      "freq": "half_hourly",
+      "source_windows": 15865,
+      "usable_windows": 15865,
+      "sampled_windows": 10000,
+      "horizons": [
+        96,
+        192,
+        336,
+        720
+      ],
+      "files": [
+        "backbone_emb_c512_half_hourly_lotsa_test.pt",
+        "fourier_basis_c512_half_hourly_h192_lotsa_test.pt",
+        "fourier_basis_c512_half_hourly_h336_lotsa_test.pt",
+        "fourier_basis_c512_half_hourly_h720_lotsa_test.pt",
+        "fourier_basis_c512_half_hourly_h96_lotsa_test.pt",
+        "futures_c512_half_hourly_h192_lotsa_test.pt",
+        "futures_c512_half_hourly_h336_lotsa_test.pt",
+        "futures_c512_half_hourly_h720_lotsa_test.pt",
+        "futures_c512_half_hourly_h96_lotsa_test.pt",
+        "sample_indices.pt",
+        "seasonality_mask_c512_half_hourly_lotsa_test.pt"
+      ]
+    },
+    {
+      "domain": "energy",
+      "dataset": "ETTh1",
+      "kind": "ett",
+      "source": "ett_cache",
+      "source_dir": "/workspace/data/external/ett/ETTh1",
+      "output_dir": "/workspace/data/real_eval_lot_ett/energy/ETTh1",
+      "context_len": 512,
+      "freq": "H",
+      "source_windows": 189,
+      "usable_windows": 189,
+      "sampled_windows": 189,
+      "horizons": [
+        96,
+        192,
+        336,
+        720
+      ],
+      "files": [
+        "ETTh1.csv",
+        "cache/backbone_emb_c512_stride512.pt",
+        "cache/futures_c512_H_h192_ett.pt",
+        "cache/futures_c512_H_h336_ett.pt",
+        "cache/futures_c512_H_h720_ett.pt",
+        "cache/futures_c512_H_h96_ett.pt",
+        "cache/raw.parquet",
+        "cache/sample_indices.pt"
+      ]
+    },
+    {
+      "domain": "climate",
+      "dataset": "oikolab_weather",
+      "kind": "lotsa",
+      "source": "test_cache",
+      "source_dir": "/workspace/data/data_lotsa/lotsa_cache_test/oikolab_weather",
+      "output_dir": "/workspace/data/real_eval_lot_ett/climate/oikolab_weather",
+      "context_len": 512,
+      "freq": "hourly",
+      "source_windows": 57212,
+      "usable_windows": 57212,
+      "sampled_windows": 10000,
+      "horizons": [
+        96,
+        192,
+        336,
+        720
+      ],
+      "files": [
+        "backbone_emb_c512_hourly_lotsa_test.pt",
+        "fourier_basis_c512_hourly_h192_lotsa_test.pt",
+        "fourier_basis_c512_hourly_h336_lotsa_test.pt",
+        "fourier_basis_c512_hourly_h720_lotsa_test.pt",
+        "fourier_basis_c512_hourly_h96_lotsa_test.pt",
+        "futures_c512_hourly_h192_lotsa_test.pt",
+        "futures_c512_hourly_h336_lotsa_test.pt",
+        "futures_c512_hourly_h720_lotsa_test.pt",
+        "futures_c512_hourly_h96_lotsa_test.pt",
+        "sample_indices.pt",
+        "seasonality_mask_c512_hourly_lotsa_test.pt"
+      ]
+    },
+    {
+      "domain": "nature",
+      "dataset": "saugeenday",
+      "kind": "lotsa",
+      "source": "test_cache",
+      "source_dir": "/workspace/data/data_lotsa/lotsa_cache_test/saugeenday",
+      "output_dir": "/workspace/data/real_eval_lot_ett/nature/saugeenday",
+      "context_len": 512,
+      "freq": "daily",
+      "source_windows": 20879,
+      "usable_windows": 20879,
+      "sampled_windows": 10000,
+      "horizons": [
+        96,
+        192,
+        336,
+        720
+      ],
+      "files": [
+        "backbone_emb_c512_daily_lotsa_test.pt",
+        "fourier_basis_c512_daily_h192_lotsa_test.pt",
+        "fourier_basis_c512_daily_h336_lotsa_test.pt",
+        "fourier_basis_c512_daily_h720_lotsa_test.pt",
+        "fourier_basis_c512_daily_h96_lotsa_test.pt",
+        "futures_c512_daily_h192_lotsa_test.pt",
+        "futures_c512_daily_h336_lotsa_test.pt",
+        "futures_c512_daily_h720_lotsa_test.pt",
+        "futures_c512_daily_h96_lotsa_test.pt",
+        "sample_indices.pt",
+        "seasonality_mask_c512_daily_lotsa_test.pt"
+      ]
+    },
+    {
+      "domain": "healthcare",
+      "dataset": "us_births",
+      "kind": "lotsa",
+      "source": "test_cache",
+      "source_dir": "/workspace/data/data_lotsa/lotsa_cache_test/us_births",
+      "output_dir": "/workspace/data/real_eval_lot_ett/healthcare/us_births",
+      "context_len": 512,
+      "freq": "daily",
+      "source_windows": 6044,
+      "usable_windows": 6044,
+      "sampled_windows": 6044,
+      "horizons": [
+        96,
+        192,
+        336,
+        720
+      ],
+      "files": [
+        "backbone_emb_c512_daily_lotsa_test.pt",
+        "fourier_basis_c512_daily_h192_lotsa_test.pt",
+        "fourier_basis_c512_daily_h336_lotsa_test.pt",
+        "fourier_basis_c512_daily_h720_lotsa_test.pt",
+        "fourier_basis_c512_daily_h96_lotsa_test.pt",
+        "futures_c512_daily_h192_lotsa_test.pt",
+        "futures_c512_daily_h336_lotsa_test.pt",
+        "futures_c512_daily_h720_lotsa_test.pt",
+        "futures_c512_daily_h96_lotsa_test.pt",
+        "sample_indices.pt",
+        "seasonality_mask_c512_daily_lotsa_test.pt"
+      ]
+    },
+    {
+      "domain": "transport",
+      "dataset": "PEMS03",
+      "kind": "lotsa",
+      "source": "train_cache",
+      "source_dir": "/workspace/data/data_lotsa/lotsa_cache/PEMS03",
+      "output_dir": "/workspace/data/real_eval_lot_ett/transport/PEMS03",
+      "context_len": 512,
+      "freq": "5_minutes",
+      "source_windows": 163645,
+      "usable_windows": 163631,
+      "sampled_windows": 10000,
+      "horizons": [
+        96,
+        192,
+        336,
+        720
+      ],
+      "files": [
+        "backbone_emb_c512_5_minutes_lotsa.pt",
+        "fourier_basis_c512_5_minutes_h192_lotsa.pt",
+        "fourier_basis_c512_5_minutes_h336_lotsa.pt",
+        "fourier_basis_c512_5_minutes_h720_lotsa.pt",
+        "fourier_basis_c512_5_minutes_h96_lotsa.pt",
+        "futures_c512_5_minutes_h192_lotsa.pt",
+        "futures_c512_5_minutes_h336_lotsa.pt",
+        "futures_c512_5_minutes_h720_lotsa.pt",
+        "futures_c512_5_minutes_h96_lotsa.pt",
+        "sample_indices.pt",
+        "seasonality_mask_c512_5_minutes_lotsa.pt"
+      ]
+    },
+    {
+      "domain": "econfin",
+      "dataset": "pedestrian_counts",
+      "kind": "lotsa",
+      "source": "train_cache",
+      "source_dir": "/workspace/data/data_lotsa/lotsa_cache/pedestrian_counts",
+      "output_dir": "/workspace/data/real_eval_lot_ett/econfin/pedestrian_counts",
+      "context_len": 512,
+      "freq": "hourly",
+      "source_windows": 456129,
+      "usable_windows": 456129,
+      "sampled_windows": 10000,
+      "horizons": [
+        96,
+        192,
+        336,
+        720
+      ],
+      "files": [
+        "backbone_emb_c512_hourly_lotsa.pt",
+        "fourier_basis_c512_hourly_h192_lotsa.pt",
+        "fourier_basis_c512_hourly_h336_lotsa.pt",
+        "fourier_basis_c512_hourly_h720_lotsa.pt",
+        "fourier_basis_c512_hourly_h96_lotsa.pt",
+        "futures_c512_hourly_h192_lotsa.pt",
+        "futures_c512_hourly_h336_lotsa.pt",
+        "futures_c512_hourly_h720_lotsa.pt",
+        "futures_c512_hourly_h96_lotsa.pt",
+        "sample_indices.pt",
+        "seasonality_mask_c512_hourly_lotsa.pt"
+      ]
+    },
+    {
+      "domain": "cloudops",
+      "dataset": "alibaba_cluster_trace_2018",
+      "kind": "lotsa",
+      "source": "hf_cached_dataset_generated_cache",
+      "source_dir": "/workspace/.cache/huggingface/datasets/Salesforce___lotsa_data/alibaba_cluster_trace_2018",
+      "index_path": "/workspace/data/real_eval_lot_ett/cloudops_index.parquet",
+      "output_dir": "/workspace/data/real_eval_lot_ett/cloudops/alibaba_cluster_trace_2018",
+      "context_len": 512,
+      "freq": "5_minutes",
+      "source_windows": null,
+      "usable_windows": 26723095,
+      "sampled_windows": 10000,
+      "horizons": [
+        96,
+        192,
+        336,
+        720
+      ],
+      "files": [
+        "backbone_emb_c512_5_minutes_lotsa.pt",
+        "fourier_basis_c512_5_minutes_h192_lotsa.pt",
+        "fourier_basis_c512_5_minutes_h336_lotsa.pt",
+        "fourier_basis_c512_5_minutes_h720_lotsa.pt",
+        "fourier_basis_c512_5_minutes_h96_lotsa.pt",
+        "futures_c512_5_minutes_h192_lotsa.pt",
+        "futures_c512_5_minutes_h336_lotsa.pt",
+        "futures_c512_5_minutes_h720_lotsa.pt",
+        "futures_c512_5_minutes_h96_lotsa.pt",
+        "seasonality_mask_c512_5_minutes_lotsa.pt"
+      ]
+    }
+  ]
+}

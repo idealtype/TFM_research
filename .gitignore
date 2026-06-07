@@ -1,6 +1,7 @@
 # Python
 __pycache__/
 *.py[cod]
+*:Zone.Identifier
 .venv/
 venv/
 .env
@@ -11,6 +12,11 @@ venv/
 # Data and caches
 data/**
 !data/.gitkeep
+data_source_light/**/*.npz
+data_source_light/**/*.pt
+data_source_light/**/*.parquet
+data_source_light/**/logs/
+data_source_light/**/cache/
 cache/
 caches/
 !src/experiments/hard_mask/cache/

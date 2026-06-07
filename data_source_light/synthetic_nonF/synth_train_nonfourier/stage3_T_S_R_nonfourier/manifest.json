@@ -1,0 +1,48 @@
+{
+  "config": "/workspace/data/synthetic/synth_config.yaml",
+  "input_root": "/workspace/data/synthetic_nonF/synth_train_nonfourier/stage2_T_S_nonfourier",
+  "output_root": "/workspace/data/synthetic_nonF/synth_train_nonfourier/stage3_T_S_R_nonfourier",
+  "models": [
+    "cyclic_spline",
+    "sarima",
+    "sawtooth",
+    "daubechies",
+    "symlet"
+  ],
+  "residual_distributions": [
+    "normal",
+    "student_t",
+    "exponential",
+    "gamma",
+    "weibull",
+    "pareto"
+  ],
+  "trend_levels": [
+    "T1",
+    "T2",
+    "T3",
+    "T4",
+    "T5",
+    "T6"
+  ],
+  "granularities": [
+    "hourly",
+    "daily",
+    "weekly"
+  ],
+  "horizons": [
+    96,
+    192,
+    336,
+    720
+  ],
+  "context_len": 512,
+  "seed": 42,
+  "snr_choices": [
+    2,
+    4,
+    8,
+    16
+  ],
+  "note": "Evaluation-only T+S+R data using Stage 2 non-Fourier T+S plus SNR-scaled residuals."
+}

@@ -1,0 +1,43 @@
+global:
+  context_len: 512
+  horizons: [96, 192, 336, 720]
+  n_samples: 4
+  seed: 42
+
+trend_levels:
+  T1:
+    intent: "monotonic upward trend; horizon should continue the obvious context direction"
+    pool_pos: [0.5, 1.0, 1.5, 2.0]
+  T2:
+    intent: "monotonic downward trend; horizon should continue the obvious context direction"
+    pool_neg: [-0.5, -1.0, -1.5, -2.0]
+  T3:
+    intent: "flat baseline; intentionally degenerate and should be sampled sparingly"
+  T4:
+    intent: "single breakpoint with consistent net direction; no trend reversal is allowed"
+    pool_free: [-2.0, -1.0, -0.5, 0.5, 1.0, 2.0]
+    horizon_break_prob: 0.35
+  T5:
+    intent: "upward trend with one gentle direction change; redefined from pos-to-neg reversal"
+    pool_pos: [0.5, 1.0, 1.5, 2.0]
+    pool_pos_soft: [0.1, 0.3, 0.5, 0.8, 1.0]
+    horizon_break_prob: 0.35
+  T6:
+    intent: "downward trend with one gentle direction change; redefined from neg-to-pos rebound"
+    pool_neg: [-0.5, -1.0, -1.5, -2.0]
+    pool_neg_soft: [-0.1, -0.3, -0.5, -0.8, -1.0]
+    horizon_break_prob: 0.35
+seasonal_levels:
+  N_FOURIER_TERMS_MAX: {daily: 2, weekly: 2, yearly: 8}
+  amplitude: 1.0
+  decay_alpha: 1.0
+  S1:  {active: [daily],          n_terms: {daily: 1}}
+  S2:  {active: [daily],          n_terms: {daily: 2}}
+  S3:  {active: [weekly],         n_terms: {weekly: 1}}
+  S4:  {active: [weekly],         n_terms: {weekly: 2}}
+  S5:  {active: [yearly],         n_terms: {yearly: 1}}
+  S6:  {active: [yearly],         n_terms: {yearly: 4}}
+  S7:  {active: [yearly],         n_terms: {yearly: 8}}
+  S8:  {active: [daily, weekly],  n_terms: {daily: 1, weekly: 1}}
+  S9:  {active: [daily, weekly],  n_terms: {daily: 2, weekly: 2}}
+  S10: {active: [weekly, yearly], n_terms: {weekly: 2, yearly: 4}}

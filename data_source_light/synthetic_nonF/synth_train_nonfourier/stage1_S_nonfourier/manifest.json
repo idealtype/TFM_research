@@ -1,0 +1,26 @@
+{
+  "config": "/workspace/data/synthetic/synth_config.yaml",
+  "data_root": "/workspace/data/synthetic_nonF/synth_train_nonfourier/stage1_S_nonfourier",
+  "models": [
+    "cyclic_spline",
+    "sarima",
+    "sawtooth",
+    "daubechies",
+    "symlet"
+  ],
+  "granularities": [
+    "hourly",
+    "daily",
+    "weekly"
+  ],
+  "horizons": [
+    96,
+    192,
+    336,
+    720
+  ],
+  "context_len": 512,
+  "n_samples": 1000,
+  "seed": 42,
+  "note": "Evaluation-only non-Fourier seasonal synthetic data."
+}

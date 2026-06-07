@@ -1,0 +1,44 @@
+{
+  "config": "/workspace/data_source_light/synthetic/synth_config.yaml",
+  "output_root": "/workspace/data/synthetic/func_dec_syn_cent_fine_mask_train",
+  "trend_levels": [
+    "T1",
+    "T2",
+    "T3",
+    "T4",
+    "T5",
+    "T6"
+  ],
+  "seasonal_combos": [
+    {
+      "level": "SM11",
+      "granularity": "hourly"
+    },
+    {
+      "level": "SM12",
+      "granularity": "hourly"
+    },
+    {
+      "level": "SM13",
+      "granularity": "weekly"
+    },
+    {
+      "level": "SM14",
+      "granularity": "weekly"
+    }
+  ],
+  "compositions": [
+    "A1",
+    "A2",
+    "A3"
+  ],
+  "horizons": [
+    96,
+    192,
+    336,
+    720
+  ],
+  "context_len": 512,
+  "n_samples": 1000,
+  "seed": 42
+}

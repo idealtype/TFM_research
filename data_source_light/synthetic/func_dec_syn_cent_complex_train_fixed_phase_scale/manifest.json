@@ -1,0 +1,77 @@
+{
+  "config": "/workspace/data/synthetic/synth_config.yaml",
+  "output_root": "/workspace/data/synthetic/func_dec_syn_cent_complex_train_fixed_phase_scale",
+  "trend_levels": [
+    "T1",
+    "T2",
+    "T3",
+    "T4",
+    "T5",
+    "T6"
+  ],
+  "seasonal_combos": [
+    {
+      "level": "S1",
+      "granularity": "hourly"
+    },
+    {
+      "level": "S2",
+      "granularity": "hourly"
+    },
+    {
+      "level": "S3",
+      "granularity": "hourly"
+    },
+    {
+      "level": "S3",
+      "granularity": "daily"
+    },
+    {
+      "level": "S4",
+      "granularity": "hourly"
+    },
+    {
+      "level": "S4",
+      "granularity": "daily"
+    },
+    {
+      "level": "S5",
+      "granularity": "weekly"
+    },
+    {
+      "level": "S6",
+      "granularity": "weekly"
+    },
+    {
+      "level": "S7",
+      "granularity": "weekly"
+    },
+    {
+      "level": "S8",
+      "granularity": "hourly"
+    },
+    {
+      "level": "S9",
+      "granularity": "hourly"
+    },
+    {
+      "level": "S10",
+      "granularity": "weekly"
+    }
+  ],
+  "compositions": [
+    "A1",
+    "A2",
+    "A3"
+  ],
+  "horizons": [
+    96,
+    192,
+    336,
+    720
+  ],
+  "context_len": 512,
+  "n_samples": 1000,
+  "seed": 42,
+  "note": "All trend x seasonal-granularity x horizon x composition combinations are generated."
+}

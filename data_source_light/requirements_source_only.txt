@@ -1,0 +1,9 @@
+numpy
+torch
+scipy
+PyYAML
+tqdm
+datasets
+pyarrow
+matplotlib
+PyWavelets

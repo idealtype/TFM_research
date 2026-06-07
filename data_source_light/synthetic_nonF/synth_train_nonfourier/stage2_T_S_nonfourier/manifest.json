@@ -1,0 +1,36 @@
+{
+  "config": "/workspace/data/synthetic/synth_config.yaml",
+  "trend_root": "/workspace/data/synthetic/func_dec_syn_cent_simple_fixed_phase_scale",
+  "seasonal_root": "/workspace/data/synthetic_nonF/synth_train_nonfourier/stage1_S_nonfourier",
+  "output_root": "/workspace/data/synthetic_nonF/synth_train_nonfourier/stage2_T_S_nonfourier",
+  "models": [
+    "cyclic_spline",
+    "sarima",
+    "sawtooth",
+    "daubechies",
+    "symlet"
+  ],
+  "trend_levels": [
+    "T1",
+    "T2",
+    "T3",
+    "T4",
+    "T5",
+    "T6"
+  ],
+  "granularities": [
+    "hourly",
+    "daily",
+    "weekly"
+  ],
+  "horizons": [
+    96,
+    192,
+    336,
+    720
+  ],
+  "context_len": 512,
+  "n_samples": 500,
+  "seed": 42,
+  "note": "Evaluation-only T+S data using existing T and non-Fourier S."
+}
