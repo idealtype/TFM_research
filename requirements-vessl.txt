@@ -1,0 +1,12 @@
+einops
+torchmetrics
+matplotlib
+pandas
+scikit-learn
+scipy
+PyYAML
+tqdm
+datasets
+pyarrow
+PyWavelets
+timesfm[torch]

@@ -1,0 +1,15 @@
+.git
+data
+**/__pycache__
+*.pyc
+*.pt
+*.pth
+*.npz
+*.parquet
+*.tar
+*.tar.gz
+*.zip
+results
+plots
+tables
+.Rhistory
