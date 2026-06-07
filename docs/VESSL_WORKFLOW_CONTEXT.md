@@ -4,8 +4,9 @@
 
 - Repository: `https://github.com/idealtype/TFM_research.git`
 - Repository visibility: public, so VESSL can clone without GitHub credentials.
-- Current commit: `1a9556b27f678fdc3859e1e75b9c373160b49caa`
+- Verified code/image commit: `1a9556b27f678fdc3859e1e75b9c373160b49caa`
 - Verified image: `ghcr.io/idealtype/tfm-research:1a9556b27f678fdc3859e1e75b9c373160b49caa`
+- Later doc-only commits may exist; use the verified code/image commit above for reproduced smoke results.
 - Verified data/object volume: `objvol-edwuqaa94ii3`
 
 ## Resource Choices
