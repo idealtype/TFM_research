@@ -77,6 +77,52 @@ export HF_HOME=/workspace/data/.cache/huggingface
 export HF_HUB_CACHE=/workspace/data/.cache/huggingface/hub
 ```
 
+## Result Path Convention
+
+All experiment outputs are saved to the object volume under `results/`.
+
+### Volume structure
+
+```
+/workspace/data/results/
+  <exp_type>/<HHmm>_<run_tag>/
+    train/          ← checkpoints (funcdec_h96.pt … h720.pt), train_result.json
+    eval_real/      ← real_eval_mae.csv, performance_by_horizon.png,
+                       <dataset>/plots/h{H}_samples{N}.png
+    eval_synth/     ← (future use)
+```
+
+- `exp_type`: `hard_mask` | `soft_mask` | `nogate_softmask`
+- `HHmm`: job submission hour+minute (local time, no date/seconds)
+- `run_tag`: short config description, e.g. `b1024_s13_scratch_v1`
+
+### Submitting jobs
+
+```bash
+./scripts/vessl_submit.sh \
+  --exp hard_mask \
+  --run b1024_s13_scratch_v1 \
+  --mode train_eval       # train | eval | train_eval
+```
+
+The script generates `HHmm` at submission time, previews the job, and asks for confirmation.
+
+### Downloading results locally
+
+```bash
+# Eval results only (plots + CSV, lightweight)
+vesslctl volume download objvol-edwuqaa94ii3 \
+  --remote-prefix "results/hard_mask/1423_b1024_s13_scratch_v1/eval_real" \
+  ./results/hard_mask/1423_b1024_s13_scratch_v1/eval_real
+
+# Full run including checkpoints
+vesslctl volume download objvol-edwuqaa94ii3 \
+  --remote-prefix "results/hard_mask/1423_b1024_s13_scratch_v1" \
+  ./results/hard_mask/1423_b1024_s13_scratch_v1
+```
+
+Downloaded files land in the local `results/` folder (gitignored, only `.gitkeep` is tracked).
+
 ## Pending Work
 
 - Data generation and TimesFM cache generation are intentionally paused.

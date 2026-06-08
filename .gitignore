@@ -31,7 +31,8 @@ datasets/
 *.pickle
 
 # Experiment outputs
-results/
+results/*
+!results/.gitkeep
 outputs/
 runs/
 logs/
