@@ -51,8 +51,7 @@ DEFAULT_RESULTS_ROOT = THIS_DIR / "results" / "fourier_synth"
 MODEL_NAME = "fine_mask"
 
 EVAL_ROOTS = [
-    resolve_data_path("/home/sia2/project/data/synthetic/func_dec_syn_cent_complex_eval_cache_10_4_8_fixed_phase_scale"),
-    resolve_data_path("/home/sia2/project/data/synthetic/func_dec_syn_cent_fine_mask_eval_cache_10_4_2_8"),
+    resolve_data_path("/home/sia2/project/data/synthetic/func_dec_syn_cent_fourier_all_eval_cache_10_4_2_8"),
 ]
 
 CACHE_DIR_RE = re.compile(
@@ -85,6 +84,8 @@ def parse_args() -> argparse.Namespace:
 
 def source_root_for_cache(cache_root: Path) -> Path | None:
     name = cache_root.name
+    if name.startswith("func_dec_syn_cent_fourier_all_eval_cache"):
+        return cache_root.parent / "func_dec_syn_cent_fourier_all_eval"
     if name.startswith("func_dec_syn_cent_complex_eval_cache"):
         return cache_root.parent / "func_dec_syn_cent_complex_eval_fixed_phase_scale"
     if name.startswith("func_dec_syn_cent_fine_mask_eval_cache"):

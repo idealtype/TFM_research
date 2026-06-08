@@ -1,0 +1,39 @@
+global:
+  context_len: 512
+  horizons: [96, 192, 336, 720]
+  n_samples: 4096
+  train_samples: 4096
+  eval_samples: 1024
+  seed: 42
+
+trend_levels:
+  T1:
+    intent: "monotonic upward trend"
+    pool_pos: [0.5, 1.0, 1.5, 2.0]
+  T2:
+    intent: "monotonic downward trend"
+    pool_neg: [-0.5, -1.0, -1.5, -2.0]
+  T3:
+    intent: "flat baseline"
+  T4:
+    intent: "single breakpoint with consistent net direction"
+    pool_free: [-2.0, -1.0, -0.5, 0.5, 1.0, 2.0]
+    horizon_break_prob: 0.35
+  T5:
+    intent: "upward trend with one gentle direction change"
+    pool_pos: [0.5, 1.0, 1.5, 2.0]
+    pool_pos_soft: [0.1, 0.3, 0.5, 0.8, 1.0]
+    horizon_break_prob: 0.35
+  T6:
+    intent: "downward trend with one gentle direction change"
+    pool_neg: [-0.5, -1.0, -1.5, -2.0]
+    pool_neg_soft: [-0.1, -0.3, -0.5, -0.8, -1.0]
+    horizon_break_prob: 0.35
+
+fourier_policy:
+  families: [daily, weekly, monthly, yearly]
+  k_max: {daily: 10, weekly: 4, monthly: 2, yearly: 8}
+  periods_days: {daily: 1.0, weekly: 7.0, monthly: 30.4375, yearly: 365.25}
+  hard_mask_rule: "active = fd < P/k and context_len * fd >= P/k"
+  case_policy: "enumerate every active harmonic-count combination per family, excluding all-zero"
+  sample_policy: "cycle all count cases; randomize concrete harmonic subset, phase, and amplitude per sample"
