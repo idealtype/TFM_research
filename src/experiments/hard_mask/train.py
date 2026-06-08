@@ -86,7 +86,7 @@ NONF_STAGE_CACHE_DIRS = {
 NONF_TRAIN_ROOT = resolve_data_path("/home/sia2/project/data/synthetic_nonF/synth_train_nonfourier")
 
 COMPLEX_CACHE_RE = re.compile(
-    r"^(?:A\d+_)?(?:T\d+_)?(?:\w+\d+_)?(?P<granularity>\w+?)_seed\d+_c\d+_h\d+$"
+    r"^(?:A\d+_)?(?:T\d+_)?(?:[A-Za-z]+\d+_)?(?P<granularity>.+?)_seed\d+_c\d+_h\d+$"
 )
 FUTURE_RE = re.compile(r"futures_c(?P<context>\d+)_(?P<freq>.+)_h(?P<horizon>\d+)_.+\.pt$")
 

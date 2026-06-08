@@ -298,7 +298,7 @@ def build_dataset(
     if composition == "A3":
         seasonal_scale = rng.uniform(amplitude_low, amplitude_high, size=n_samples).astype(np.float32)
     seasonal_component = (
-        (seasonal_signal - seasonal_mu[:, None]) / seasonal_denom[:, None] * seasonal_scale[:, None]
+        seasonal_signal / seasonal_denom[:, None] * seasonal_scale[:, None]
     ).astype(np.float32)
 
     residual_signal = np.zeros((n_samples, total_len), dtype=np.float32)
