@@ -277,9 +277,9 @@ def load_manifest(real_root: Path) -> list[dict]:
 
 def manifest_cache_dir(real_root: Path, item: dict) -> Path:
     if "cache_dir" in item:
-        return Path(item["cache_dir"])
+        return resolve_data_path(item["cache_dir"])
     if "output_dir" in item:
-        base = Path(item["output_dir"])
+        base = resolve_data_path(item["output_dir"])
     else:
         domain = item.get("domain") or item.get("group")
         name = item.get("dataset") or item.get("name")
