@@ -14,6 +14,7 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 
 THIS_DIR = Path(__file__).resolve().parent
+REPO_ROOT = THIS_DIR.parents[2]
 EXPERIMENTS_ROOT = THIS_DIR.parent
 sys.path.insert(0, str(EXPERIMENTS_ROOT))
 from loader_utils import add_runtime_args, dataloader_kwargs, resolve_data_path, resolve_project_path  # noqa: E402
@@ -52,9 +53,7 @@ from eval_real_lot_ett_single_model import target_values  # noqa: E402
 DEFAULT_REAL_ROOT = resolve_data_path("/home/sia2/project/data/real_eval_lot_ett")
 DEFAULT_CHECKPOINT_ROOT = THIS_DIR / "results"
 DEFAULT_RESULTS_ROOT = THIS_DIR / "results" / "real_lot_ett"
-DEFAULT_TIMESFM_METRICS_CSV = Path(
-    "/home/sia2/project/5.30fine_mask/results/syn_and_alldata/real_lot_ett/real_eval_mae.csv"
-)
+DEFAULT_TIMESFM_METRICS_CSV = REPO_ROOT / "config" / "baselines" / "timesfm_real_lot_ett.csv"
 MODEL_NAME = "nogate_softmask"
 
 
@@ -515,7 +514,8 @@ def run(args: argparse.Namespace) -> None:
         "total_pred_abs_mean", "residual_abs_mean", "residual_total_abs_ratio",
         "trend_mae", "seasonal_mae", "residual_mae", "checkpoint",
     ]
-    rows = attach_precomputed_timesfm(rows, args.timesfm_metrics_csv)
+    if args.skip_tfm:
+        rows = attach_precomputed_timesfm(rows, args.timesfm_metrics_csv)
     write_csv(out_root / "real_eval_component_mae.csv", rows, fieldnames)
     write_csv(out_root / "real_eval_mae.csv", rows, fieldnames)
     plot_model_vs_tfm_by_horizon(rows, out_root / "performance_by_horizon_all.png",

@@ -27,13 +27,20 @@ for path in [str(DATA_LOTSA_DIR), OLD_EXP_DIR, SRC_DIR, PROJECT_ROOT_4_28, THIS_
         sys.path.insert(0, str(path))
 
 from common import (  # noqa: E402
+    FAMILIES,
     FREQ_DAYS,
     HORIZONS,
+    add_harmonic_activation_stats,
     add_error,
     build_soft_mask_basis,
     expand_bases,
+    family_energy,
+    family_share_from_energy,
+    finalize_harmonic_activation_stats,
     finalize_mae,
     finalize_mse,
+    harmonic_activation_fieldnames,
+    init_harmonic_activation_accumulator,
     
     load_single_model,
     load_tfm_zeroshot_model,
@@ -41,12 +48,27 @@ from common import (  # noqa: E402
     plot_model_vs_tfm_by_horizon,
     plot_real_comparison_grid,
     select_indices,
+    soft_mask_family_contributions,
     
     write_csv,
     write_summary,
 )
 from datasets import load_dataset  # noqa: E402
-from eval_real_lot_ett_single_model import target_values  # noqa: E402
+try:  # noqa: E402
+    from eval_real_lot_ett_single_model import target_values  # type: ignore
+except ModuleNotFoundError:  # noqa: E402
+    def target_values(row: dict, variate_idx: int = 0) -> np.ndarray:
+        target = row["target"]
+        if len(target) == 0:
+            return np.asarray([], dtype=np.float32)
+        first = target[0]
+        if isinstance(first, (list, tuple, np.ndarray)):
+            if len(target) <= variate_idx:
+                raise ValueError(f"target has no variate index {variate_idx}")
+            values = target[variate_idx]
+        else:
+            values = target
+        return np.asarray(values, dtype=np.float32)
 
 
 DEFAULT_REAL_ROOT = resolve_data_path("/home/sia2/project/data/real_eval_lot_ett")
@@ -72,6 +94,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--samples_per_dataset", type=int, default=0)
     parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--plot_samples_per_dataset", type=int, default=3)
+    parser.add_argument("--gate_active_threshold", type=float, default=0.5,
+                        help="Gate value threshold used for learned harmonic active-rate diagnostics.")
+    parser.add_argument("--coeff_active_threshold", type=float, default=1e-6,
+                        help="Absolute gated coefficient amplitude threshold used for active-rate diagnostics.")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--device", default=os.environ.get("DEVICE", "cuda:0"))
     parser.add_argument("--hf_cache_dir", type=str, default=None)
@@ -289,6 +315,21 @@ def manifest_cache_dir(real_root: Path, item: dict) -> Path:
     return base
 
 
+def build_real_plot_interpretability(
+    future_n: torch.Tensor,
+    pred_seasonal_n: torch.Tensor,
+    pred_family_energy: dict[str, torch.Tensor],
+) -> dict:
+    future_energy = float((future_n.detach().float() ** 2).mean().item())
+    pred_seasonal_energy = float((pred_seasonal_n.detach().float() ** 2).mean().item())
+    return {
+        "pred_seasonal_future_energy_ratio": (
+            None if future_energy <= 1e-12 else pred_seasonal_energy / future_energy
+        ),
+        "pred_family_share": family_share_from_energy(pred_family_energy),
+    }
+
+
 @torch.no_grad()
 def evaluate_dataset(model, tfm_model, dataset: FineMaskRealDataset, batch_size: int,
                      device: torch.device, plot_limit: int, args: argparse.Namespace):
@@ -307,16 +348,31 @@ def evaluate_dataset(model, tfm_model, dataset: FineMaskRealDataset, batch_size:
     residual_n = 0
     residual_abs_sum = 0.0
     pred_abs_sum = 0.0
+    pred_family_energy_sum = {family: 0.0 for family in FAMILIES}
+    activation_acc = init_harmonic_activation_accumulator()
     plot_items = []
 
     for batch in loader:
         emb = batch["emb"].to(device)
         future_n_dev = batch["future_n"].to(device)
-        daily, weekly, monthly, yearly = expand_bases(dataset.bases, emb.shape[0], device)
+        bases = expand_bases(dataset.bases, emb.shape[0], device)
+        daily, weekly, monthly, yearly = bases
         pred, decomp = model(emb, daily, weekly, monthly, yearly)
         add_error(acc, pred, future_n_dev)
         no_residual_pred = decomp["trend"] + decomp["seasonal"]
         add_error(no_res_acc, no_residual_pred, future_n_dev)
+        pred_family_curves = soft_mask_family_contributions(decomp, bases)
+        pred_family_energy = family_energy(pred_family_curves)
+        for family in FAMILIES:
+            pred_family_energy_sum[family] += float(pred_family_energy[family].sum().item())
+        add_harmonic_activation_stats(
+            activation_acc,
+            decomp,
+            dataset.freq if dataset.freq in FREQ_DAYS else "hourly",
+            dataset.context_len,
+            gate_threshold=args.gate_active_threshold,
+            coeff_threshold=args.coeff_active_threshold,
+        )
 
         residual = decomp["residual"].detach().float()
         pred_detached = pred.detach().float()
@@ -350,6 +406,15 @@ def evaluate_dataset(model, tfm_model, dataset: FineMaskRealDataset, batch_size:
                     "tfm_pred": None if tfm_pred_n is None else tfm_pred_n[i].detach().cpu(),
                     "source_idx": int(batch["source_idx"][i].item()),
                     "decomp": {k: decomp[k][i].detach().cpu() for k in ["trend", "seasonal", "residual"]},
+                    "seasonal_families": {
+                        family: pred_family_curves[family][i].detach().cpu()
+                        for family in FAMILIES
+                    },
+                    "interpretability": build_real_plot_interpretability(
+                        future_n_dev[i],
+                        decomp["seasonal"][i],
+                        {family: pred_family_energy[family][i] for family in FAMILIES},
+                    ),
                 })
 
     total_mae = finalize_mae(acc)
@@ -360,7 +425,7 @@ def evaluate_dataset(model, tfm_model, dataset: FineMaskRealDataset, batch_size:
     residual_abs_mean = residual_abs_sum / max(1, residual_n)
     total_pred_abs_mean = pred_abs_sum / max(1, residual_n)
 
-    return {
+    metrics = {
         "total_mae": total_mae,
         "total_mse": finalize_mse(acc),
         "no_residual_mae": no_residual_mae,
@@ -371,7 +436,15 @@ def evaluate_dataset(model, tfm_model, dataset: FineMaskRealDataset, batch_size:
         "residual_total_abs_ratio": residual_abs_mean / (total_pred_abs_mean + 1e-8),
         "tfm_zeroshot_mae": None if tfm_acc["n"] == 0 else finalize_mae(tfm_acc),
         "tfm_zeroshot_mse": None if tfm_acc["n"] == 0 else finalize_mse(tfm_acc),
-    }, plot_items
+    }
+    total_pred_family_energy = sum(pred_family_energy_sum.values())
+    for family in FAMILIES:
+        metrics[f"pred_share_{family}"] = (
+            None if total_pred_family_energy <= 1e-10
+            else pred_family_energy_sum[family] / total_pred_family_energy
+        )
+    metrics.update(finalize_harmonic_activation_stats(activation_acc))
+    return metrics, plot_items
 
 
 def dataset_result_dir(out_root: Path, dataset_name: str) -> Path:
@@ -470,7 +543,7 @@ def run(args: argparse.Namespace) -> None:
             metrics, plot_items = evaluate_dataset(
                 model, tfm_model, dataset, args.batch_size, device, args.plot_samples_per_dataset, args
             )
-            rows.append({
+            row = {
                 "domain": domain,
                 "dataset": dataset_name,
                 "frequency": dataset.freq,
@@ -491,7 +564,12 @@ def run(args: argparse.Namespace) -> None:
                 "seasonal_mae": None,
                 "residual_mae": None,
                 "checkpoint": str(ckpt_path),
-            })
+            }
+            for family in FAMILIES:
+                row[f"pred_share_{family}"] = metrics.get(f"pred_share_{family}")
+            for key in harmonic_activation_fieldnames():
+                row[key] = metrics.get(key)
+            rows.append(row)
             log_progress(f"  done model_mae={metrics['total_mae']:.6g}")
 
             dataset_out = dataset_result_dir(out_root, dataset_name)
@@ -513,7 +591,10 @@ def run(args: argparse.Namespace) -> None:
         "total_mae", "total_mse", "tfm_zeroshot_mae", "tfm_zeroshot_mse",
         "no_residual_mae", "residual_gain", "residual_std",
         "total_pred_abs_mean", "residual_abs_mean", "residual_total_abs_ratio",
-        "trend_mae", "seasonal_mae", "residual_mae", "checkpoint",
+        "trend_mae", "seasonal_mae", "residual_mae",
+        *(f"pred_share_{family}" for family in FAMILIES),
+        *harmonic_activation_fieldnames(),
+        "checkpoint",
     ]
     rows = attach_precomputed_timesfm(rows, args.timesfm_metrics_csv)
     write_csv(out_root / "real_eval_component_mae.csv", rows, fieldnames)

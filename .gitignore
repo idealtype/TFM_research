@@ -26,6 +26,7 @@ datasets/
 *.npy
 *.npz
 *.csv
+!config/baselines/timesfm_real_lot_ett.csv
 *.parquet
 *.pkl
 *.pickle
