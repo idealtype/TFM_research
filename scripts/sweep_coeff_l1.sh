@@ -28,9 +28,11 @@ HORIZONS="96 192 336 720"
 # ---------- paths ----------
 EXP="nogate_softmask"
 EXP_DIR="/tmp/tfm_project/src/experiments/${EXP}"
-LOTSA_CACHE="/workspace/data/data_lotsa/lotsa_cache"
 REAL_ROOT="/workspace/data/real_eval_lot_ett"
 DOMAIN_CONFIG="/tmp/tfm_project/src/experiments/synthetic_center/train_syn_real_raw/domain_config.json"
+TMP_DATA_ROOT="/tmp/data"
+# Pre-built compact pool (run prepare_compact_pool.sh once to generate this)
+COMPACT_SRC="/workspace/data/compact_nogate_b1024_m5000_r1000_c250"
 
 HHMM=$(date +%H%M)
 
@@ -74,10 +76,14 @@ for VAL in "${SWEEP_VALUES[@]}"; do
     # sanitize value for job name (remove dots; e.g. "1e-4" stays as-is, fine for VESSL)
     JOB_NAME="ng-l1-${VAL}-${HHMM}"
 
+    # Copy pre-built compact pool from S3 to /tmp (~19 GB, much faster than full 82 GB)
+    COPY_CMD="mkdir -p ${TMP_DATA_ROOT} && cp -r ${COMPACT_SRC}/. ${TMP_DATA_ROOT}/"
+
     TRAIN_CMD="cd ${EXP_DIR} \
-  && python train_warm_real_mix.py \
+  && export DATA_ROOT=${TMP_DATA_ROOT} \
+  && python train_warm_real_mix_parallel.py \
     --results_root ${TRAIN_ROOT} \
-    --lotsa_cache_root ${LOTSA_CACHE} \
+    --lotsa_cache_root ${TMP_DATA_ROOT}/data_lotsa/lotsa_cache \
     --domain_config ${DOMAIN_CONFIG} \
     --horizons ${HORIZONS} \
     --batch_size ${BATCH_SIZE} \
@@ -95,7 +101,7 @@ for VAL in "${SWEEP_VALUES[@]}"; do
     --real_root ${REAL_ROOT} \
     --skip_tfm"
 
-    JOB_CMD="${SETUP} && ${TRAIN_CMD} && ${EVAL_CMD}"
+    JOB_CMD="${SETUP} && ${COPY_CMD} && export DATA_ROOT=${TMP_DATA_ROOT} && ${TRAIN_CMD} && ${EVAL_CMD}"
 
     OUTPUT=$(vesslctl job create \
         -n "${JOB_NAME}" \

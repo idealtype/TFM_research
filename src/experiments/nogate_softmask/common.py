@@ -42,6 +42,7 @@ HORIZONS = [96, 192, 336, 720]
 PERIODS = {"daily": 1.0, "weekly": 7.0, "monthly": 30.4375, "yearly": 365.25}
 # Maximum harmonic order per family
 K_MAX = {"daily": 10, "weekly": 4, "monthly": 2, "yearly": 8}
+FAMILIES = ["daily", "weekly", "monthly", "yearly"]
 
 FREQ_DAYS = {
     "5_minutes": 1 / 288,
@@ -260,6 +261,157 @@ def expand_bases(bases: dict[str, torch.Tensor], batch_size: int, device: torch.
     monthly = bases["monthly"].to(device).unsqueeze(0).expand(batch_size, -1, -1)
     yearly = bases["yearly"].to(device).unsqueeze(0).expand(batch_size, -1, -1)
     return daily, weekly, monthly, yearly
+
+
+def harmonic_rule_masks(freq: str, context_len: int = 512) -> dict[str, dict[str, torch.Tensor]]:
+    """Return per-family hard-rule and physics-only harmonic masks."""
+    if freq not in FREQ_DAYS:
+        raise KeyError(f"Unknown frequency for harmonic rule masks: {freq}")
+    fd = FREQ_DAYS[freq]
+    context_span = int(context_len) * fd
+    masks = {}
+    for family, period in PERIODS.items():
+        hard_values = []
+        physics_values = []
+        for k in range(1, K_MAX[family] + 1):
+            harmonic_period = period / k
+            physics_on = fd < harmonic_period
+            hard_values.append(bool(physics_on and context_span >= harmonic_period))
+            physics_values.append(bool(physics_on))
+        masks[family] = {
+            "hard": torch.tensor(hard_values, dtype=torch.bool),
+            "physics": torch.tensor(physics_values, dtype=torch.bool),
+        }
+    return masks
+
+
+def family_curves_from_coefficients(
+    coefficients: dict[str, torch.Tensor],
+    bases: tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor],
+) -> dict[str, torch.Tensor]:
+    result = {}
+    for family, basis in zip(FAMILIES, bases):
+        coef = coefficients[family].to(device=basis.device, dtype=basis.dtype)
+        result[family] = torch.bmm(basis, coef.unsqueeze(-1)).squeeze(-1)
+    return result
+
+
+def soft_mask_family_contributions(
+    decomp: dict[str, torch.Tensor | dict[str, torch.Tensor]],
+    bases: tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor],
+) -> dict[str, torch.Tensor]:
+    return family_curves_from_coefficients(decomp["seasonal_coefficients"], bases)
+
+
+def family_energy(curves: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
+    return {family: (curve.detach().float() ** 2).mean(dim=1) for family, curve in curves.items()}
+
+
+def family_share_from_energy(energy: dict[str, torch.Tensor | float]) -> dict[str, float]:
+    values = {
+        family: float(torch.as_tensor(energy[family]).detach().float().mean().item())
+        for family in FAMILIES
+    }
+    total = sum(values.values())
+    if total <= 1e-12:
+        return {family: 0.0 for family in FAMILIES}
+    return {family: values[family] / total for family in FAMILIES}
+
+
+def init_harmonic_activation_accumulator() -> dict[str, list[float]]:
+    return {}
+
+
+def _add_weighted_stat(acc: dict[str, list[float]], key: str, value: torch.Tensor, mask: torch.Tensor) -> None:
+    mask = mask.to(device=value.device, dtype=torch.bool)
+    if value.ndim == 2 and mask.ndim == 1:
+        mask = mask.unsqueeze(0).expand(value.shape[0], -1)
+    if not bool(mask.any().item()):
+        return
+    selected = value.detach().float()[mask]
+    if selected.numel() == 0:
+        return
+    slot = acc.setdefault(key, [0.0, 0.0])
+    slot[0] += float(selected.sum().item())
+    slot[1] += float(selected.numel())
+
+
+def add_harmonic_activation_stats(
+    acc: dict[str, list[float]],
+    decomp: dict[str, torch.Tensor | dict[str, torch.Tensor]],
+    freq: str,
+    context_len: int,
+    gate_threshold: float = 0.5,
+    coeff_threshold: float = 1e-6,
+) -> None:
+    """Accumulate no-gate coefficient activity against hard-rule masks.
+
+    The no-gate model has no learned gates, so gate_* fields are intentionally
+    absent/empty in output CSVs. Raw and gated coefficient metrics are identical.
+    """
+    del gate_threshold
+    masks = harmonic_rule_masks(freq, context_len)
+    coefficients = decomp["seasonal_coefficients"]
+    for family in FAMILIES:
+        raw_coef = coefficients[family].detach().float()
+        coef_amp = raw_coef.view(raw_coef.shape[0], -1, 2).norm(dim=2)
+        coeff_on = (coef_amp > float(coeff_threshold)).float()
+
+        hard_mask = masks[family]["hard"].to(coef_amp.device)
+        physics_mask = masks[family]["physics"].to(coef_amp.device)
+        extra_mask = physics_mask & ~hard_mask
+
+        for prefix, mask in [
+            ("soft_support", physics_mask),
+            ("hard_rule", hard_mask),
+            ("soft_extra", extra_mask),
+        ]:
+            _add_weighted_stat(acc, f"{prefix}_raw_coeff_active_rate_{family}", coeff_on, mask)
+            _add_weighted_stat(acc, f"{prefix}_gated_coeff_active_rate_{family}", coeff_on, mask)
+            _add_weighted_stat(acc, f"{prefix}_mean_raw_coeff_amp_{family}", coef_amp, mask)
+            _add_weighted_stat(acc, f"{prefix}_mean_gated_coeff_amp_{family}", coef_amp, mask)
+
+        _add_weighted_stat(acc, f"hard_rule_support_rate_{family}", hard_mask.float(), physics_mask)
+        _add_weighted_stat(acc, f"soft_extra_support_rate_{family}", extra_mask.float(), physics_mask)
+        _add_weighted_stat(acc, "hard_rule_support_rate_all", hard_mask.float(), physics_mask)
+        _add_weighted_stat(acc, "soft_extra_support_rate_all", extra_mask.float(), physics_mask)
+        _add_weighted_stat(acc, "soft_support_gated_coeff_active_rate_all", coeff_on, physics_mask)
+        _add_weighted_stat(acc, "hard_rule_gated_coeff_active_rate_all", coeff_on, hard_mask)
+        _add_weighted_stat(acc, "soft_extra_gated_coeff_active_rate_all", coeff_on, extra_mask)
+
+
+def finalize_harmonic_activation_stats(acc: dict[str, list[float]]) -> dict[str, float | None]:
+    return {
+        key: (None if count <= 0 else total / count)
+        for key, (total, count) in sorted(acc.items())
+    }
+
+
+def harmonic_activation_fieldnames() -> list[str]:
+    fields = []
+    for prefix in ["soft_support", "hard_rule", "soft_extra"]:
+        for metric in [
+            "gate_active_rate",
+            "raw_coeff_active_rate",
+            "gated_coeff_active_rate",
+            "mean_gate",
+            "mean_raw_coeff_amp",
+            "mean_gated_coeff_amp",
+        ]:
+            fields.extend(f"{prefix}_{metric}_{family}" for family in FAMILIES)
+    fields.extend(f"hard_rule_support_rate_{family}" for family in FAMILIES)
+    fields.extend(f"soft_extra_support_rate_{family}" for family in FAMILIES)
+    fields.extend([
+        "hard_rule_support_rate_all",
+        "soft_extra_support_rate_all",
+        "soft_support_gate_active_rate_all",
+        "hard_rule_gate_active_rate_all",
+        "soft_extra_gate_active_rate_all",
+        "soft_support_gated_coeff_active_rate_all",
+        "hard_rule_gated_coeff_active_rate_all",
+        "soft_extra_gated_coeff_active_rate_all",
+    ])
+    return fields
 
 
 def checkpoint_candidates(run_dir: Path, horizon: int) -> list[Path]:
@@ -501,7 +653,13 @@ def plot_real_comparison_grid(path: Path, title: str, items: list[dict]) -> None
     if not items:
         return
     shown = items[:3]
-    fig, axes = plt.subplots(len(shown), 2, figsize=(12, 3.6 * len(shown)), squeeze=False)
+    fig, axes = plt.subplots(len(shown), 3, figsize=(16.5, 3.6 * len(shown)), squeeze=False)
+    family_colors = {
+        "daily": "#1f77b4",
+        "weekly": "#ff7f0e",
+        "monthly": "#9467bd",
+        "yearly": "#8c564b",
+    }
     for row_idx, item in enumerate(shown):
         x = np.arange(int(item["future"].numel()))
         ax = axes[row_idx][0]
@@ -518,9 +676,55 @@ def plot_real_comparison_grid(path: Path, title: str, items: list[dict]) -> None
         ax.plot(x, item["decomp"]["trend"], label="trend", alpha=0.8)
         ax.plot(x, item["decomp"]["seasonal"], label="seasonal", alpha=0.8)
         ax.plot(x, item["decomp"]["residual"], label="residual", alpha=0.8)
+        interp = item.get("interpretability")
+        if interp:
+            lines = []
+            gt_ratio = interp.get("gt_seasonal_future_energy_ratio")
+            pred_ratio = interp.get("pred_seasonal_future_energy_ratio")
+            if gt_ratio is not None:
+                lines.append(f"GT seasonal/GT: {100.0 * float(gt_ratio):.1f}%")
+            if pred_ratio is not None:
+                lines.append(f"Pred seasonal/GT: {100.0 * float(pred_ratio):.1f}%")
+            shares = interp.get("pred_family_share") or {}
+            if shares:
+                lines.append(
+                    "Pred D/W/M/Y: "
+                    + "/".join(f"{100.0 * float(shares.get(f, 0.0)):.0f}" for f in FAMILIES)
+                    + "%"
+                )
+            gt_shares = interp.get("gt_family_share") or {}
+            if gt_shares:
+                lines.append(
+                    "GT D/W/M/Y: "
+                    + "/".join(f"{100.0 * float(gt_shares.get(f, 0.0)):.0f}" for f in FAMILIES)
+                    + "%"
+                )
+            if lines:
+                ax.text(
+                    0.01, 0.98, "\n".join(lines),
+                    transform=ax.transAxes,
+                    va="top",
+                    fontsize=7,
+                    bbox={"boxstyle": "round,pad=0.25", "facecolor": "white", "alpha": 0.78, "edgecolor": "0.8"},
+                )
         ax.set_title(f"FuncDec components sample={item.get('source_idx', row_idx)}")
         ax.grid(alpha=0.25)
         ax.legend(fontsize=7)
+
+        ax = axes[row_idx][2]
+        family_curves = item.get("seasonal_families") or {}
+        if family_curves:
+            ax.plot(x, item["decomp"]["seasonal"], color="black", linewidth=1.4, label="seasonal total")
+            for family in FAMILIES:
+                curve = family_curves.get(family)
+                if curve is not None:
+                    ax.plot(x, curve, color=family_colors[family], alpha=0.9, label=family)
+        else:
+            ax.plot(x, item["decomp"]["seasonal"], color="black", linewidth=1.4, label="seasonal total")
+        ax.axhline(0.0, color="0.65", linewidth=0.8, alpha=0.6)
+        ax.set_title(f"Seasonal families sample={item.get('source_idx', row_idx)}")
+        ax.grid(alpha=0.25)
+        ax.legend(fontsize=7, ncol=2)
     fig.suptitle(title, fontsize=12)
     fig.tight_layout(rect=(0, 0, 1, 0.95))
     path.parent.mkdir(parents=True, exist_ok=True)

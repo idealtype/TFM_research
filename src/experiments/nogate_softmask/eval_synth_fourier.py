@@ -26,13 +26,21 @@ for path in [SRC_DIR, PROJECT_ROOT_4_28, THIS_DIR]:
         sys.path.insert(0, str(path))
 
 from common import (  # noqa: E402
+    FAMILIES,
     FREQ_DAYS,
     HORIZONS,
+    add_harmonic_activation_stats,
     add_error,
     build_soft_mask_basis,
     expand_bases,
+    family_curves_from_coefficients,
+    family_energy,
+    family_share_from_energy,
+    finalize_harmonic_activation_stats,
     finalize_mae,
     finalize_mse,
+    harmonic_activation_fieldnames,
+    init_harmonic_activation_accumulator,
     
     load_single_model,
     load_tfm_zeroshot_model,
@@ -40,6 +48,7 @@ from common import (  # noqa: E402
     plot_model_vs_tfm_by_horizon,
     plot_real_comparison_grid,
     select_indices,
+    soft_mask_family_contributions,
     
     write_csv,
     write_summary,
@@ -74,6 +83,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--samples_per_group", type=int, default=0)
     parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--plot_samples_per_group", type=int, default=3)
+    parser.add_argument("--gate_active_threshold", type=float, default=0.5,
+                        help="Kept for schema compatibility; no-gate models leave gate metrics empty.")
+    parser.add_argument("--coeff_active_threshold", type=float, default=1e-6,
+                        help="Absolute coefficient amplitude threshold used for active-rate diagnostics.")
     parser.add_argument("--hf_cache_dir", type=str, default=None)
     parser.set_defaults(skip_tfm=True)
     parser.add_argument("--run_tfm_zeroshot", dest="skip_tfm", action="store_false",
@@ -122,6 +135,7 @@ class FourierSynthDataset(Dataset):
         backbone_path = ds_dir / f"backbone_emb_c{self.context_len}_h{self.horizon}_stride1.pt"
         raw_path = ds_dir / f"raw_futures_h{self.horizon}.pt"
         comp_path = ds_dir / f"component_targets_h{self.horizon}.pt"
+        coef_path = ds_dir / f"seasonal_coefficients_fine_mask_h{self.horizon}.pt"
 
         for p in [backbone_path, raw_path]:
             if not p.exists():
@@ -136,10 +150,18 @@ class FourierSynthDataset(Dataset):
         self.future_n = raw["futures_n"].float()
         self.trend_n = None
         self.seasonal_n = None
+        self.gt_coefficients = None
         if comp_path.exists():
             comp = torch.load(comp_path, map_location="cpu", weights_only=False)
             self.trend_n = comp["trend_n"].float()
             self.seasonal_n = comp["seasonal_n"].float()
+        if coef_path.exists():
+            coef_payload = torch.load(coef_path, map_location="cpu", weights_only=False)
+            self.gt_coefficients = {
+                family: coef_payload[f"{family}_coefficients"].float()
+                for family in FAMILIES
+                if f"{family}_coefficients" in coef_payload
+            }
 
         finite = (torch.isfinite(self.embeddings).all(dim=1) &
                   torch.isfinite(self.future_n).all(dim=1))
@@ -179,6 +201,10 @@ class FourierSynthDataset(Dataset):
         if self.trend_n is not None:
             item["trend_n"] = self.trend_n[i]
             item["seasonal_n"] = self.seasonal_n[i]
+        if self.gt_coefficients is not None:
+            for family in FAMILIES:
+                if family in self.gt_coefficients:
+                    item[f"gt_coef_{family}"] = self.gt_coefficients[family][i]
         return item
 
 
@@ -191,6 +217,10 @@ def collate(batch: list[dict]) -> dict:
     for k in ["trend_n", "seasonal_n"]:
         if k in batch[0]:
             out[k] = torch.stack([item[k] for item in batch])
+    for family in FAMILIES:
+        key = f"gt_coef_{family}"
+        if key in batch[0]:
+            out[key] = torch.stack([item[key] for item in batch])
     return out
 
 
@@ -228,6 +258,31 @@ def discover_groups(eval_roots: list[Path], horizon: int,
     return groups
 
 
+def build_plot_interpretability(
+    future_n: torch.Tensor,
+    pred_seasonal_n: torch.Tensor,
+    pred_family_energy: dict[str, torch.Tensor],
+    gt_family_energy: dict[str, torch.Tensor] | None,
+    gt_seasonal_n: torch.Tensor | None,
+) -> dict:
+    future_energy = float((future_n.detach().float() ** 2).mean().item())
+    pred_seasonal_energy = float((pred_seasonal_n.detach().float() ** 2).mean().item())
+    out = {
+        "pred_seasonal_future_energy_ratio": (
+            None if future_energy <= 1e-12 else pred_seasonal_energy / future_energy
+        ),
+        "pred_family_share": family_share_from_energy(pred_family_energy),
+    }
+    if gt_seasonal_n is not None:
+        gt_seasonal_energy = float((gt_seasonal_n.detach().float() ** 2).mean().item())
+        out["gt_seasonal_future_energy_ratio"] = (
+            None if future_energy <= 1e-12 else gt_seasonal_energy / future_energy
+        )
+    if gt_family_energy is not None:
+        out["gt_family_share"] = family_share_from_energy(gt_family_energy)
+    return out
+
+
 @torch.no_grad()
 def evaluate_group(model, tfm_model, dataset: FourierSynthDataset, batch_size: int,
                    device: torch.device, args: argparse.Namespace) -> dict:
@@ -242,15 +297,53 @@ def evaluate_group(model, tfm_model, dataset: FourierSynthDataset, batch_size: i
     trend_acc = metric_accumulator()
     seasonal_acc = metric_accumulator()
     tfm_acc = metric_accumulator()
+    family_sse = {family: 0.0 for family in FAMILIES}
+    gt_family_energy_sum = {family: 0.0 for family in FAMILIES}
+    pred_family_energy_sum = {family: 0.0 for family in FAMILIES}
+    wrong_family_energy_sum = {family: 0.0 for family in FAMILIES}
+    pred_seasonal_energy_sum = 0.0
+    activation_acc = init_harmonic_activation_accumulator()
     plot_items = []
 
     for batch in loader:
         emb = batch["emb"].to(device)
         future_n = batch["future_n"].to(device)
-        daily, weekly, monthly, yearly = expand_bases(dataset.bases, emb.shape[0], device)
+        bases = expand_bases(dataset.bases, emb.shape[0], device)
+        daily, weekly, monthly, yearly = bases
         pred, decomp = model(emb, daily, weekly, monthly, yearly)
         add_error(acc, pred, future_n)
         tfm_pred_n = None
+        pred_family_curves = soft_mask_family_contributions(decomp, bases)
+        pred_family_energy = family_energy(pred_family_curves)
+        batch_pred_seasonal_energy = (decomp["seasonal"].detach().float() ** 2).mean(dim=1)
+        pred_seasonal_energy_sum += float(batch_pred_seasonal_energy.sum().item())
+        for family in FAMILIES:
+            pred_family_energy_sum[family] += float(pred_family_energy[family].sum().item())
+        add_harmonic_activation_stats(
+            activation_acc,
+            decomp,
+            dataset.granularity if dataset.granularity in FREQ_DAYS else "hourly",
+            dataset.context_len,
+            gate_threshold=args.gate_active_threshold,
+            coeff_threshold=args.coeff_active_threshold,
+        )
+
+        gt_family_energy = None
+        if all(f"gt_coef_{family}" in batch for family in FAMILIES):
+            gt_coefficients = {
+                family: batch[f"gt_coef_{family}"].to(device)
+                for family in FAMILIES
+            }
+            gt_family_curves = family_curves_from_coefficients(gt_coefficients, bases)
+            gt_family_energy = family_energy(gt_family_curves)
+            for family in FAMILIES:
+                diff = pred_family_curves[family] - gt_family_curves[family]
+                family_sse[family] += float((diff.detach().float() ** 2).sum().item())
+                gt_energy = gt_family_energy[family]
+                gt_family_energy_sum[family] += float(gt_energy.sum().item())
+                gt_off = gt_energy <= 1e-10
+                if bool(gt_off.any().item()):
+                    wrong_family_energy_sum[family] += float(pred_family_energy[family][gt_off].sum().item())
         if "trend_n" in batch:
             add_error(trend_acc, decomp["trend"], batch["trend_n"].to(device))
             add_error(seasonal_acc, decomp["seasonal"], batch["seasonal_n"].to(device))
@@ -274,16 +367,41 @@ def evaluate_group(model, tfm_model, dataset: FourierSynthDataset, batch_size: i
                     "pred": pred[i].detach().cpu(),
                     "tfm_pred": None if tfm_pred_n is None else tfm_pred_n[i].detach().cpu(),
                     "decomp": {k: decomp[k][i].detach().cpu() for k in ["trend", "seasonal", "residual"]},
+                    "seasonal_families": {
+                        family: pred_family_curves[family][i].detach().cpu()
+                        for family in FAMILIES
+                    },
+                    "interpretability": build_plot_interpretability(
+                        future_n[i],
+                        decomp["seasonal"][i],
+                        {family: pred_family_energy[family][i] for family in FAMILIES},
+                        None if gt_family_energy is None else {family: gt_family_energy[family][i] for family in FAMILIES},
+                        None if "seasonal_n" not in batch else batch["seasonal_n"][i].to(device),
+                    ),
                 })
 
-    return {
+    metrics = {
         "total_mae": finalize_mae(acc),
         "total_mse": finalize_mse(acc),
         "trend_mae": finalize_mae(trend_acc) if trend_acc["n"] > 0 else None,
         "seasonal_mae": finalize_mae(seasonal_acc) if seasonal_acc["n"] > 0 else None,
         "tfm_zeroshot_mae": finalize_mae(tfm_acc) if tfm_acc["n"] > 0 else None,
         "tfm_zeroshot_mse": finalize_mse(tfm_acc) if tfm_acc["n"] > 0 else None,
-    }, plot_items
+    }
+    total_gt_family_energy = sum(gt_family_energy_sum.values())
+    total_pred_family_energy = sum(pred_family_energy_sum.values())
+    for family in FAMILIES:
+        gt_energy = gt_family_energy_sum[family]
+        pred_energy = pred_family_energy_sum[family]
+        metrics[f"gt_explained_{family}"] = None if gt_energy <= 1e-10 else 1.0 - family_sse[family] / gt_energy
+        metrics[f"gt_share_{family}"] = None if total_gt_family_energy <= 1e-10 else gt_energy / total_gt_family_energy
+        metrics[f"pred_share_{family}"] = None if total_pred_family_energy <= 1e-10 else pred_energy / total_pred_family_energy
+        metrics[f"wrong_family_leakage_{family}"] = (
+            None if pred_seasonal_energy_sum <= 1e-10
+            else wrong_family_energy_sum[family] / pred_seasonal_energy_sum
+        )
+    metrics.update(finalize_harmonic_activation_stats(activation_acc))
+    return metrics, plot_items
 
 
 def run(args: argparse.Namespace) -> None:
@@ -355,6 +473,11 @@ def run(args: argparse.Namespace) -> None:
         "composition", "trend_level", "seasonal_level", "granularity",
         "horizon", "n_samples", "model", "total_mae", "total_mse",
         "trend_mae", "seasonal_mae", "tfm_zeroshot_mae", "tfm_zeroshot_mse",
+        *(f"gt_explained_{family}" for family in FAMILIES),
+        *(f"gt_share_{family}" for family in FAMILIES),
+        *(f"pred_share_{family}" for family in FAMILIES),
+        *(f"wrong_family_leakage_{family}" for family in FAMILIES),
+        *harmonic_activation_fieldnames(),
         "checkpoint",
     ]
     write_csv(args.results_root / "simple_on_complex_component_mae.csv", rows, fieldnames)
