@@ -490,6 +490,136 @@ def attach_precomputed_timesfm(rows: list[dict], metrics_csv: Path | None) -> li
     return merged.to_dict(orient="records")
 
 
+EVAL_FIELDNAMES = [
+    "domain", "dataset", "frequency", "horizon", "n_samples", "model",
+    "total_mae", "total_mse", "tfm_zeroshot_mae", "tfm_zeroshot_mse",
+    "no_residual_mae", "residual_gain", "residual_std",
+    "total_pred_abs_mean", "residual_abs_mean", "residual_total_abs_ratio",
+    "trend_mae", "seasonal_mae", "residual_mae",
+    *(f"pred_share_{family}" for family in FAMILIES),
+    *harmonic_activation_fieldnames(),
+    "checkpoint",
+]
+
+
+def eval_horizon(
+    horizon: int,
+    args: argparse.Namespace,
+    manifest: list[dict],
+    device: torch.device,
+) -> tuple[list[dict], str]:
+    """Evaluate a single horizon across all datasets. Returns (rows, ckpt_path_str)."""
+    out_root = args.results_root
+    model, ckpt_path, _cfg = load_single_model(args.checkpoint_root, int(horizon), device)
+    log_progress(f"h{horizon}: loaded checkpoint {ckpt_path.name}")
+    tfm_model = None
+    if not args.skip_tfm:
+        log_progress(f"h{horizon}: loading TimesFM")
+        tfm_model = load_tfm_zeroshot_model(512, int(horizon), args.hf_cache_dir)
+
+    rows = []
+    for item_idx, item in enumerate(manifest):
+        domain = str(item.get("domain") or item.get("group") or "")
+        dataset_name = str(item.get("dataset") or item.get("name"))
+        cache_dir = manifest_cache_dir(args.real_root, item)
+        fallback_freq = str(item.get("freq") or item.get("frequency") or "")
+
+        log_progress(f"h{horizon}: [{item_idx + 1}/{len(manifest)}] {domain}/{dataset_name}")
+        try:
+            dataset = FineMaskRealDataset(
+                cache_dir, int(horizon), args.samples_per_dataset,
+                args.seed + item_idx, fallback_freq=fallback_freq,
+                dataset_name=dataset_name, real_root=args.real_root,
+                hf_cache_dir=args.hf_cache_dir,
+            )
+        except (FileNotFoundError, ValueError) as exc:
+            log_progress(f"  skip {dataset_name}: {exc}")
+            continue
+
+        metrics, plot_items = evaluate_dataset(
+            model, tfm_model, dataset, args.batch_size, device, args.plot_samples_per_dataset, args
+        )
+        row = {
+            "domain": domain,
+            "dataset": dataset_name,
+            "frequency": dataset.freq,
+            "horizon": int(horizon),
+            "n_samples": len(dataset),
+            "model": MODEL_NAME,
+            "total_mae": metrics["total_mae"],
+            "total_mse": metrics["total_mse"],
+            "tfm_zeroshot_mae": metrics["tfm_zeroshot_mae"],
+            "tfm_zeroshot_mse": metrics["tfm_zeroshot_mse"],
+            "no_residual_mae": metrics["no_residual_mae"],
+            "residual_gain": metrics["residual_gain"],
+            "residual_std": metrics["residual_std"],
+            "total_pred_abs_mean": metrics["total_pred_abs_mean"],
+            "residual_abs_mean": metrics["residual_abs_mean"],
+            "residual_total_abs_ratio": metrics["residual_total_abs_ratio"],
+            "trend_mae": None,
+            "seasonal_mae": None,
+            "residual_mae": None,
+            "checkpoint": str(ckpt_path),
+        }
+        for family in FAMILIES:
+            row[f"pred_share_{family}"] = metrics.get(f"pred_share_{family}")
+        for key in harmonic_activation_fieldnames():
+            row[key] = metrics.get(key)
+        rows.append(row)
+        log_progress(f"  done model_mae={metrics['total_mae']:.6g}")
+
+        dataset_out = dataset_result_dir(out_root, dataset_name)
+        for plot_idx in range(0, len(plot_items), 3):
+            plot_real_comparison_grid(
+                dataset_out / "plots" / f"h{horizon}_samples{plot_idx // 3 + 1}.png",
+                f"{domain}/{dataset_name} h{horizon}",
+                plot_items[plot_idx: plot_idx + 3],
+            )
+
+    del model
+    if tfm_model is not None:
+        del tfm_model
+    if device.type == "cuda":
+        torch.cuda.empty_cache()
+
+    return rows, str(ckpt_path)
+
+
+def write_outputs(
+    args: argparse.Namespace,
+    rows: list[dict],
+    ckpt_by_horizon: dict[str, str],
+    out_root: Path,
+) -> None:
+    rows = attach_precomputed_timesfm(rows, args.timesfm_metrics_csv)
+    write_csv(out_root / "real_eval_component_mae.csv", rows, EVAL_FIELDNAMES)
+    write_csv(out_root / "real_eval_mae.csv", rows, EVAL_FIELDNAMES)
+    plot_model_vs_tfm_by_horizon(rows, out_root / "performance_by_horizon_all.png",
+                                  "Soft-mask real eval MAE by horizon")
+    plot_model_vs_tfm_by_horizon(rows, out_root / "performance_by_horizon.png",
+                                  "Soft-mask real eval MAE by horizon")
+    write_summary(out_root / "real_eval_summary.json",
+                  {**vars(args), "checkpoint_by_horizon": ckpt_by_horizon},
+                  rows, ["domain", "dataset", "horizon", "model"])
+    by_dataset: dict[str, list[dict]] = {}
+    for row in rows:
+        by_dataset.setdefault(str(row["dataset"]), []).append(row)
+    for dataset_name, sub_rows in by_dataset.items():
+        dataset_out = dataset_result_dir(out_root, dataset_name)
+        write_csv(dataset_out / "component_mae.csv", sub_rows, EVAL_FIELDNAMES)
+        plot_model_vs_tfm_by_horizon(
+            sub_rows,
+            dataset_out / "performance_by_horizon.png",
+            f"{dataset_name} MAE by horizon",
+        )
+        write_summary(
+            dataset_out / "summary.json",
+            {**vars(args), "checkpoint_by_horizon": ckpt_by_horizon},
+            sub_rows,
+            ["horizon", "model"],
+        )
+
+
 def run(args: argparse.Namespace) -> None:
     device = torch.device(
         args.device if (args.device == "cpu" or torch.cuda.is_available()) else "cpu"
@@ -507,122 +637,18 @@ def run(args: argparse.Namespace) -> None:
     if not manifest:
         raise FileNotFoundError(f"No matching evaluation datasets in {args.real_root}")
 
-    rows = []
-    ckpt_by_horizon = {}
     log_progress(f"start device={device} output={out_root} datasets={len(manifest)}")
     if args.skip_tfm:
         log_progress("TimesFM execution disabled; tfm columns will be filled from precomputed metrics CSV")
 
+    rows = []
+    ckpt_by_horizon = {}
     for horizon in args.horizons:
-        model, ckpt_path, _cfg = load_single_model(args.checkpoint_root, int(horizon), device)
-        ckpt_by_horizon[str(horizon)] = str(ckpt_path)
-        log_progress(f"h{horizon}: loaded checkpoint {ckpt_path.name}")
-        tfm_model = None
-        if not args.skip_tfm:
-            log_progress(f"h{horizon}: loading TimesFM")
-            tfm_model = load_tfm_zeroshot_model(512, int(horizon), args.hf_cache_dir)
+        horizon_rows, ckpt_path_str = eval_horizon(horizon, args, manifest, device)
+        rows.extend(horizon_rows)
+        ckpt_by_horizon[str(horizon)] = ckpt_path_str
 
-        for item_idx, item in enumerate(manifest):
-            domain = str(item.get("domain") or item.get("group") or "")
-            dataset_name = str(item.get("dataset") or item.get("name"))
-            cache_dir = manifest_cache_dir(args.real_root, item)
-            fallback_freq = str(item.get("freq") or item.get("frequency") or "")
-
-            log_progress(f"h{horizon}: [{item_idx + 1}/{len(manifest)}] {domain}/{dataset_name}")
-            try:
-                dataset = FineMaskRealDataset(
-                    cache_dir, int(horizon), args.samples_per_dataset,
-                    args.seed + item_idx, fallback_freq=fallback_freq,
-                    dataset_name=dataset_name, real_root=args.real_root,
-                    hf_cache_dir=args.hf_cache_dir,
-                )
-            except (FileNotFoundError, ValueError) as exc:
-                log_progress(f"  skip {dataset_name}: {exc}")
-                continue
-
-            metrics, plot_items = evaluate_dataset(
-                model, tfm_model, dataset, args.batch_size, device, args.plot_samples_per_dataset, args
-            )
-            row = {
-                "domain": domain,
-                "dataset": dataset_name,
-                "frequency": dataset.freq,
-                "horizon": int(horizon),
-                "n_samples": len(dataset),
-                "model": MODEL_NAME,
-                "total_mae": metrics["total_mae"],
-                "total_mse": metrics["total_mse"],
-                "tfm_zeroshot_mae": metrics["tfm_zeroshot_mae"],
-                "tfm_zeroshot_mse": metrics["tfm_zeroshot_mse"],
-                "no_residual_mae": metrics["no_residual_mae"],
-                "residual_gain": metrics["residual_gain"],
-                "residual_std": metrics["residual_std"],
-                "total_pred_abs_mean": metrics["total_pred_abs_mean"],
-                "residual_abs_mean": metrics["residual_abs_mean"],
-                "residual_total_abs_ratio": metrics["residual_total_abs_ratio"],
-                "trend_mae": None,
-                "seasonal_mae": None,
-                "residual_mae": None,
-                "checkpoint": str(ckpt_path),
-            }
-            for family in FAMILIES:
-                row[f"pred_share_{family}"] = metrics.get(f"pred_share_{family}")
-            for key in harmonic_activation_fieldnames():
-                row[key] = metrics.get(key)
-            rows.append(row)
-            log_progress(f"  done model_mae={metrics['total_mae']:.6g}")
-
-            dataset_out = dataset_result_dir(out_root, dataset_name)
-            for plot_idx in range(0, len(plot_items), 3):
-                plot_real_comparison_grid(
-                    dataset_out / "plots" / f"h{horizon}_samples{plot_idx // 3 + 1}.png",
-                    f"{domain}/{dataset_name} h{horizon}",
-                    plot_items[plot_idx: plot_idx + 3],
-                )
-
-        del model
-        if tfm_model is not None:
-            del tfm_model
-        if device.type == "cuda":
-            torch.cuda.empty_cache()
-
-    fieldnames = [
-        "domain", "dataset", "frequency", "horizon", "n_samples", "model",
-        "total_mae", "total_mse", "tfm_zeroshot_mae", "tfm_zeroshot_mse",
-        "no_residual_mae", "residual_gain", "residual_std",
-        "total_pred_abs_mean", "residual_abs_mean", "residual_total_abs_ratio",
-        "trend_mae", "seasonal_mae", "residual_mae",
-        *(f"pred_share_{family}" for family in FAMILIES),
-        *harmonic_activation_fieldnames(),
-        "checkpoint",
-    ]
-    rows = attach_precomputed_timesfm(rows, args.timesfm_metrics_csv)
-    write_csv(out_root / "real_eval_component_mae.csv", rows, fieldnames)
-    write_csv(out_root / "real_eval_mae.csv", rows, fieldnames)
-    plot_model_vs_tfm_by_horizon(rows, out_root / "performance_by_horizon_all.png",
-                                  "Soft-mask real eval MAE by horizon")
-    plot_model_vs_tfm_by_horizon(rows, out_root / "performance_by_horizon.png",
-                                  "Soft-mask real eval MAE by horizon")
-    write_summary(out_root / "real_eval_summary.json",
-                  {**vars(args), "checkpoint_by_horizon": ckpt_by_horizon},
-                  rows, ["domain", "dataset", "horizon", "model"])
-    by_dataset: dict[str, list[dict]] = {}
-    for row in rows:
-        by_dataset.setdefault(str(row["dataset"]), []).append(row)
-    for dataset_name, sub_rows in by_dataset.items():
-        dataset_out = dataset_result_dir(out_root, dataset_name)
-        write_csv(dataset_out / "component_mae.csv", sub_rows, fieldnames)
-        plot_model_vs_tfm_by_horizon(
-            sub_rows,
-            dataset_out / "performance_by_horizon.png",
-            f"{dataset_name} MAE by horizon",
-        )
-        write_summary(
-            dataset_out / "summary.json",
-            {**vars(args), "checkpoint_by_horizon": ckpt_by_horizon},
-            sub_rows,
-            ["horizon", "model"],
-        )
+    write_outputs(args, rows, ckpt_by_horizon, out_root)
     log_progress(f"complete output={out_root}")
 
 
