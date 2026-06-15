@@ -40,7 +40,7 @@ PROJECT_ROOT_4_28 = resolve_project_path("/home/sia2/project/4.28basis")
 SRC_DIR = PROJECT_ROOT_4_28 / "src"
 OLD_EXP_DIR = PROJECT_ROOT_4_28 / "basis_dec" / "experiment" / "func_dec_syn_cent"
 NONF_TRAIN_DIR = resolve_project_path("/home/sia2/project/5.22syn_cent/train_nonF_rawtarget")
-REAL_TRAIN_DIR = resolve_project_path("/home/sia2/project/5.22syn_cent/train_syn_real_raw")
+REAL_TRAIN_DIR = EXPERIMENTS_ROOT / "synthetic_center" / "train_syn_real_raw"
 
 # Keep THIS_DIR first even when Python already inserted the script directory.
 # Otherwise older model/ packages on sys.path can shadow the fine_mask model.
