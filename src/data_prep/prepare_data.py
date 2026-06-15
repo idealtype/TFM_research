@@ -168,6 +168,43 @@ def update_choice(target, key, indices: np.ndarray) -> None:
     target[key].update(int(x) for x in np.asarray(indices).tolist())
 
 
+class PlanIndexCache:
+    """Lightweight cache for planning: loads tensors, extracts valid indices, then frees tensors.
+
+    Keeps only the small indices array in memory, avoiding the OOM caused by
+    caching full backbone embeddings (hundreds of MB each) for all 144 subsets.
+    """
+
+    def __init__(self) -> None:
+        self._cache: dict[str, np.ndarray] = {}
+
+    def clear(self) -> None:
+        self._cache.clear()
+        gc.collect()
+
+    def load(self, group: dict) -> dict:
+        key = f"{group['cache_dir']}::h{group['horizon']}"
+        if key in self._cache:
+            return {"indices": self._cache[key]}
+
+        backbone = torch.load(group["backbone_path"], map_location="cpu", weights_only=False)
+        futures = torch.load(group["future_path"], map_location="cpu", weights_only=False)
+        embeddings = backbone["embeddings"].float()
+        future_n = futures["futures_n"].float()
+        finite = torch.isfinite(embeddings).all(dim=1) & torch.isfinite(future_n).all(dim=1)
+        valid_mask = futures.get("valid_mask")
+        if valid_mask is not None:
+            finite = finite & valid_mask.bool()
+        indices = finite.nonzero(as_tuple=True)[0].cpu().numpy()
+        del backbone, futures, embeddings, future_n, finite
+        gc.collect()
+
+        if len(indices) == 0:
+            raise ValueError(f"No valid samples in {group['cache_dir']} h{group['horizon']}")
+        self._cache[key] = indices
+        return {"indices": indices}
+
+
 def simulate_schedule(base, args: argparse.Namespace) -> Plan:
     real_needed: dict[tuple[str, int], set[int]] = defaultdict(set)
     synth_needed: dict[str, set[int]] = defaultdict(set)
@@ -198,7 +235,7 @@ def simulate_schedule(base, args: argparse.Namespace) -> Plan:
             flush=True,
         )
 
-    real_cache = base.RealPayloadCache(max_items=max(1, len(real_total)))
+    real_cache = PlanIndexCache()
 
     for horizon in args.horizons:
         horizon = int(horizon)
