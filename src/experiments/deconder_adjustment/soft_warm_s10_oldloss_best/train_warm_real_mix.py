@@ -119,7 +119,7 @@ def train_mixed_full(model: FuncDecModel, real_groups: list[dict], synth_groups:
     params = trainable_params(model)
     optimizer = torch.optim.AdamW(params, lr=args.learning_rate, weight_decay=args.weight_decay)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=max(1, int(steps)))
-    real_cache = base.RealPayloadCache(max_items=1)
+    real_cache = base.RealPayloadCache(max_items=max(1, len(real_groups)))
     history = []
     active_real = list(real_groups)
     active_synth = list(synth_groups)
@@ -230,7 +230,7 @@ def train_residual_only(model: FuncDecModel, real_groups: list[dict], steps: int
     optimizer = torch.optim.AdamW(params, lr=args.residual_learning_rate,
                                   weight_decay=args.weight_decay)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=max(1, int(steps)))
-    real_cache = base.RealPayloadCache(max_items=1)
+    real_cache = base.RealPayloadCache(max_items=max(1, len(real_groups)))
     history = []
     active_real = list(real_groups)
     model.train()
