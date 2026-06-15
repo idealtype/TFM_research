@@ -26,7 +26,7 @@ if [[ ! -d "$V1_REPO_DIR/.git" ]]; then
   git clone --depth 1 https://github.com/idealtype/timesfm_origin.git "$V1_REPO_DIR"
 fi
 
-pip install --quiet utilsforecast
+python -c "import utilsforecast" 2>/dev/null || pip install --quiet utilsforecast
 
 if [[ ! -f "$V1_CKPT_PATH" ]]; then
   python - "$V1_CKPT_DIR" <<'PY'
@@ -55,6 +55,8 @@ else
     --device "$DEVICE" \
     --batch_size 1024 \
     --fourier_batch_size 1024 \
+    --encode_batch_size 1024 \
+    --num_workers 4 \
     --fourier_warmup_steps 125 \
     --mixed_steps 2500 \
     --residual_steps 500 \
