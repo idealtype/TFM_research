@@ -222,6 +222,8 @@ def simulate_schedule(base, args: argparse.Namespace) -> Plan:
         if args.mixed_steps > 0:
             active_real = list(real_groups)
             active_synth = list(synth_groups)
+            plan_loaded: set[str] = set()
+            print(f"[plan] h{horizon} mixed: {int(args.mixed_steps)} steps, {len(active_real)} real groups", flush=True)
             for step in range(1, int(args.mixed_steps) + 1):
                 use_synth = bool(active_synth) and args.synth_interval > 0 and step % args.synth_interval == 0
                 if use_synth:
@@ -242,12 +244,17 @@ def simulate_schedule(base, args: argparse.Namespace) -> Plan:
                     group = active_real[
                         ((step - 1) // max(1, int(args.real_group_chunk_steps))) % len(active_real)
                     ]
+                    cache_key = f"{group['subset']}::h{horizon}"
+                    if cache_key not in plan_loaded:
+                        print(f"[plan] loading mixed real h{horizon} subset={group['subset']} (step {step})", flush=True)
                     try:
                         payload = real_cache.load(group)
                     except Exception as exc:
                         print(f"[plan] skip mixed real h{horizon} subset={group['subset']}: {type(exc).__name__}: {exc}", flush=True)
                         active_real = [g for g in active_real if g["subset"] != group["subset"]]
+                        plan_loaded.discard(cache_key)
                         continue
+                    plan_loaded.add(cache_key)
                     seed = args.seed + horizon * 23
                     rng = np.random.default_rng(seed + step * 1009)
                     chosen = rng.choice(
@@ -257,21 +264,29 @@ def simulate_schedule(base, args: argparse.Namespace) -> Plan:
                     )
                     update_choice(real_needed, (group["cache_dir"], horizon), chosen)
                     real_seen.add((group["cache_dir"], horizon))
+            print(f"[plan] h{horizon} mixed done: {len(plan_loaded)} subsets loaded", flush=True)
 
         if args.residual_steps > 0:
             active_real = list(real_groups)
+            plan_loaded_res: set[str] = set()
+            print(f"[plan] h{horizon} residual: {int(args.residual_steps)} steps, {len(active_real)} real groups", flush=True)
             for step in range(1, int(args.residual_steps) + 1):
                 if not active_real:
                     continue
                 group = active_real[
                     ((step - 1) // max(1, int(args.real_group_chunk_steps))) % len(active_real)
                 ]
+                cache_key = f"{group['subset']}::h{horizon}"
+                if cache_key not in plan_loaded_res:
+                    print(f"[plan] loading residual real h{horizon} subset={group['subset']} (step {step})", flush=True)
                 try:
                     payload = real_cache.load(group)
                 except Exception as exc:
                     print(f"[plan] skip residual real h{horizon} subset={group['subset']}: {type(exc).__name__}: {exc}", flush=True)
                     active_real = [g for g in active_real if g["subset"] != group["subset"]]
+                    plan_loaded_res.discard(cache_key)
                     continue
+                plan_loaded_res.add(cache_key)
                 seed = args.seed + horizon * 29
                 rng = np.random.default_rng(seed + step * 1009)
                 chosen = rng.choice(
@@ -281,6 +296,7 @@ def simulate_schedule(base, args: argparse.Namespace) -> Plan:
                 )
                 update_choice(real_needed, (group["cache_dir"], horizon), chosen)
                 real_seen.add((group["cache_dir"], horizon))
+            print(f"[plan] h{horizon} residual done: {len(plan_loaded_res)} subsets loaded", flush=True)
 
     real_before_rows = 0
     representative_real: dict[str, tuple[str, int]] = {}
