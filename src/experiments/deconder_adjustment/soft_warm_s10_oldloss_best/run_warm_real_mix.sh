@@ -136,7 +136,7 @@ print(f"[verify] scratch + batch_size=1024 + synth_interval=10 confirmed: {path}
 PY
 
 echo "=== Phase 2a: Evaluate real LOTSA+ETT without running TimesFM ==="
-DEVICE=$DEVICE python "$PROJECT/eval_real.py" \
+DEVICE=$DEVICE python "$PROJECT/eval_real_parallel.py" \
   --checkpoint_root "$RESULTS" \
   --results_root "$RESULTS/real_lot_ett"
 

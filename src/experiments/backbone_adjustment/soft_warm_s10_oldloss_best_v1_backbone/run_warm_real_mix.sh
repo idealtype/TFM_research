@@ -141,7 +141,7 @@ REAL_EVAL_ARGS=()
 if [[ -n "$REAL_ROOT" ]]; then
   REAL_EVAL_ARGS+=(--real_root "$REAL_ROOT")
 fi
-DEVICE=$DEVICE python "$PROJECT/eval_real.py" \
+DEVICE=$DEVICE python "$PROJECT/eval_real_parallel.py" \
   --checkpoint_root "$RESULTS" \
   --results_root "$RESULTS/real_lot_ett" \
   --run_tfm_zeroshot \
