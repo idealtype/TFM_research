@@ -40,23 +40,27 @@ snapshot_download(
 PY
 fi
 
-python "$REPO_ROOT/src/data_prep/prepare_v1_backbone_data.py" \
-  --src_data_root "$DATA_ROOT" \
-  --dst_data_root "$COMPACT_DST" \
-  --lotsa_cache_root "$DATA_ROOT/data_lotsa/lotsa_cache" \
-  --real_eval_root "$DATA_ROOT/real_eval_lot_ett" \
-  --real_eval_dst_root "$REAL_EVAL_DST" \
-  --v1_src "$V1_REPO_DIR/v1/src" \
-  --checkpoint_path "$V1_CKPT_PATH" \
-  --hf_cache_dir "$HF_CACHE_DIR" \
-  --device "$DEVICE" \
-  --batch_size 1024 \
-  --fourier_batch_size 1024 \
-  --fourier_warmup_steps 125 \
-  --mixed_steps 2500 \
-  --residual_steps 500 \
-  --synth_interval 10 \
-  --real_group_chunk_steps 63
+if [[ "${SKIP_RECACHE:-0}" == "1" ]]; then
+  echo "[skip] SKIP_RECACHE=1: reusing existing cache at $COMPACT_DST"
+else
+  python "$REPO_ROOT/src/data_prep/prepare_v1_backbone_data.py" \
+    --src_data_root "$DATA_ROOT" \
+    --dst_data_root "$COMPACT_DST" \
+    --lotsa_cache_root "$DATA_ROOT/data_lotsa/lotsa_cache" \
+    --real_eval_root "$DATA_ROOT/real_eval_lot_ett" \
+    --real_eval_dst_root "$REAL_EVAL_DST" \
+    --v1_src "$V1_REPO_DIR/v1/src" \
+    --checkpoint_path "$V1_CKPT_PATH" \
+    --hf_cache_dir "$HF_CACHE_DIR" \
+    --device "$DEVICE" \
+    --batch_size 1024 \
+    --fourier_batch_size 1024 \
+    --fourier_warmup_steps 125 \
+    --mixed_steps 2500 \
+    --residual_steps 500 \
+    --synth_interval 10 \
+    --real_group_chunk_steps 63
+fi
 
 DATA_ROOT="$COMPACT_DST" \
 REAL_ROOT="$REAL_EVAL_DST" \

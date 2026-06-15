@@ -242,8 +242,8 @@ def simulate_schedule(base, args: argparse.Namespace) -> Plan:
                     ]
                     try:
                         payload = real_cache.load(group)
-                    except ValueError as exc:
-                        print(f"[plan] skip mixed real h{horizon} subset={group['subset']}: {exc}", flush=True)
+                    except Exception as exc:
+                        print(f"[plan] skip mixed real h{horizon} subset={group['subset']}: {type(exc).__name__}: {exc}", flush=True)
                         active_real = [g for g in active_real if g["subset"] != group["subset"]]
                         continue
                     seed = args.seed + horizon * 23
@@ -266,8 +266,8 @@ def simulate_schedule(base, args: argparse.Namespace) -> Plan:
                 ]
                 try:
                     payload = real_cache.load(group)
-                except ValueError as exc:
-                    print(f"[plan] skip residual real h{horizon} subset={group['subset']}: {exc}", flush=True)
+                except Exception as exc:
+                    print(f"[plan] skip residual real h{horizon} subset={group['subset']}: {type(exc).__name__}: {exc}", flush=True)
                     active_real = [g for g in active_real if g["subset"] != group["subset"]]
                     continue
                 seed = args.seed + horizon * 29
