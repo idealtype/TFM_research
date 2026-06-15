@@ -61,7 +61,8 @@ else
     --mixed_steps 2500 \
     --residual_steps 500 \
     --synth_interval 10 \
-    --real_group_chunk_steps 63
+    --real_group_chunk_steps 63 \
+    --skip_lotsa_subsets HZMETRO SHMETRO
 fi
 
 DATA_ROOT="$COMPACT_DST" \

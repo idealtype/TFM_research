@@ -71,6 +71,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--hf_cache_dir", type=str, default=None)
     parser.add_argument("--device", default=os.environ.get("DEVICE", "cuda:0"))
     parser.add_argument("--encode_batch_size", type=int, default=256)
+    parser.add_argument("--skip_lotsa_subsets", nargs="*", default=None,
+                        help="Subset names to exclude from real data planning (e.g. HZMETRO SHMETRO)")
     parser.add_argument("--skip_train_cache", action="store_true")
     parser.add_argument("--real_eval_root", type=Path, default=DEFAULT_REAL_EVAL_ROOT)
     parser.add_argument("--real_eval_dst_root", type=Path, default=DEFAULT_REAL_EVAL_DST_ROOT)

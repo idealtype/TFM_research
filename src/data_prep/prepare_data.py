@@ -155,10 +155,12 @@ def discover_real_groups(base, args: argparse.Namespace, horizon: int) -> list[d
         }
         - base.EVAL_TARGETS
     )
+    skip = set(getattr(args, "skip_lotsa_subsets", None) or [])
     return [
         group
         for subset in all_subsets
-        if (group := base.discover_real_group(args.lotsa_cache_root, subset, horizon)) is not None
+        if subset not in skip
+        and (group := base.discover_real_group(args.lotsa_cache_root, subset, horizon)) is not None
     ]
 
 
