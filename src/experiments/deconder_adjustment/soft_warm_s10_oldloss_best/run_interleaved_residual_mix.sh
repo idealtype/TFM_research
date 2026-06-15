@@ -14,7 +14,7 @@ MIXED_STEPS=${MIXED_STEPS:-2500}
 FULL_BURNIN_STEPS=${FULL_BURNIN_STEPS:-375}
 CYCLE_FULL_STEPS=${CYCLE_FULL_STEPS:-250}
 CYCLE_RESIDUAL_STEPS=${CYCLE_RESIDUAL_STEPS:-13}
-SYNTH_INTERVAL=${SYNTH_INTERVAL:-13}
+SYNTH_INTERVAL=${SYNTH_INTERVAL:-10}
 REAL_GROUP_CHUNK_STEPS=${REAL_GROUP_CHUNK_STEPS:-63}
 
 mkdir -p "$LOG_DIR"
@@ -127,7 +127,7 @@ data = json.loads(path.read_text())
 bad = []
 if data.get("args", {}).get("init_checkpoint_dir") != "none":
     bad.append(("args", data.get("args", {}).get("init_checkpoint_dir")))
-if data.get("args", {}).get("synth_interval") != 13:
+if data.get("args", {}).get("synth_interval") != 10:
     bad.append(("synth_interval", data.get("args", {}).get("synth_interval")))
 if data.get("args", {}).get("cycle_residual_steps") != 13:
     bad.append(("cycle_residual_steps", data.get("args", {}).get("cycle_residual_steps")))
@@ -148,7 +148,7 @@ for horizon, row in data.get("per_horizon", {}).items():
             bad.append((horizon, f"unexpected_final_residual_block:{last_cycle}"))
 if bad:
     raise SystemExit(f"unexpected interleaved run settings in {path}: {bad}")
-print(f"[verify] scratch + batch_size=1024 + synth_interval=13 + no final residual-only confirmed: {path}")
+print(f"[verify] scratch + batch_size=1024 + synth_interval=10 + no final residual-only confirmed: {path}")
 PY
 
 echo "=== Phase 2a: Evaluate real LOTSA+ETT without running TimesFM ==="

@@ -4,7 +4,7 @@ set -euo pipefail
 
 DEVICE=${DEVICE:-cuda:0}
 PROJECT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-RESULTS=${RESULTS_ROOT:-$PROJECT/results/residual_head_tfm_style_warm_real_mix_synth13_b1024_parallel_trend_seasonal_loss}
+RESULTS=${RESULTS_ROOT:-$PROJECT/results/fourier_warm_real_mix_synth13_b1024_parallel_trend_seasonal_loss}
 LOG_DIR="$RESULTS/logs"
 LOG_FILE="$LOG_DIR/run_$(date +%Y%m%d_%H%M%S).log"
 HORIZONS=(${HORIZONS:-96 192 336 720})
@@ -14,6 +14,7 @@ MIXED_STEPS=${MIXED_STEPS:-2500}
 RESIDUAL_STEPS=${RESIDUAL_STEPS:-500}
 SYNTH_INTERVAL=${SYNTH_INTERVAL:-10}
 REAL_GROUP_CHUNK_STEPS=${REAL_GROUP_CHUNK_STEPS:-63}
+REAL_ROOT=${REAL_ROOT:-}
 
 mkdir -p "$LOG_DIR"
 exec > >(tee -a "$LOG_FILE") 2>&1
@@ -135,10 +136,17 @@ if bad:
 print(f"[verify] scratch + batch_size=1024 + synth_interval=10 confirmed: {path}")
 PY
 
-echo "=== Phase 2a: Evaluate real LOTSA+ETT without running TimesFM ==="
+echo "=== Phase 2a: Evaluate real LOTSA+ETT against TimesFM v1 ==="
+REAL_EVAL_ARGS=()
+if [[ -n "$REAL_ROOT" ]]; then
+  REAL_EVAL_ARGS+=(--real_root "$REAL_ROOT")
+fi
 DEVICE=$DEVICE python "$PROJECT/eval_real.py" \
   --checkpoint_root "$RESULTS" \
-  --results_root "$RESULTS/real_lot_ett"
+  --results_root "$RESULTS/real_lot_ett" \
+  --run_tfm_zeroshot \
+  --timesfm_metrics_csv none \
+  "${REAL_EVAL_ARGS[@]}"
 
 # Synthetic evaluation is intentionally disabled for the current soft-mask runs.
 # DEVICE=$DEVICE python "$PROJECT/eval_synth_fourier.py" \
