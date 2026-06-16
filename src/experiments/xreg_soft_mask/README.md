@@ -38,3 +38,16 @@ RESULTS_ROOT=/workspace/data/results/xreg_soft_mask/eval_real \
 ```
 
 `XREG_RIDGE` defaults to `0.0`, matching the TimesFM default.
+
+## ETT Smoke Runs
+
+```bash
+# Existing ETTh1 cache only.
+CHECKPOINT_ROOT=/path/to/checkpoints_or_train_root \
+./run_eval_xreg_etth1.sh
+
+# Build ETTh2/ETTm1/ETTm2 caches, then evaluate them with the same checkpoint.
+./run_prepare_ett_extra_cache.sh
+CHECKPOINT_ROOT=/path/to/checkpoints_or_train_root \
+./run_eval_xreg_ett_extra.sh
+```
