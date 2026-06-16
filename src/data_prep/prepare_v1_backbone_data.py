@@ -278,11 +278,12 @@ def save_v1_backbone(
     print(f"[v1 saved] {dst_path} rows={emb.shape[0]}", flush=True)
 
 
-def _backbone_dst_exists(cache_dir: Path, src_root: Path, dst_root: Path) -> bool:
-    backbone_paths = sorted(cache_dir.glob("backbone_emb_c*_*.pt"))
-    if not backbone_paths:
-        return False
-    return compact.dst_for(backbone_paths[0], src_root, dst_root).exists()
+def _missing_backbone_dsts(cache_dir: Path, src_root: Path, dst_root: Path) -> list[Path]:
+    return [
+        path
+        for path in sorted(cache_dir.glob("backbone_emb_c*_*.pt"))
+        if not compact.dst_for(path, src_root, dst_root).exists()
+    ]
 
 
 def copy_real_group_v1(
@@ -295,17 +296,18 @@ def copy_real_group_v1(
     prefetched: tuple | None = None,
 ) -> None:
     cache_dir = Path(cache_dir_s)
-    if _backbone_dst_exists(cache_dir, src_root, dst_root):
-        print(f"[v1 skip] {cache_dir.name} already encoded, skipping", flush=True)
-        return
+    missing_backbones = _missing_backbone_dsts(cache_dir, src_root, dst_root)
     union_indices = sorted({idx for indices in indices_by_horizon.values() for idx in indices})
     compact_pos = {original_idx: pos for pos, original_idx in enumerate(union_indices)}
-    if prefetched is not None:
-        contexts, freq, context_len, meta = prefetched
+    if missing_backbones:
+        if prefetched is not None:
+            contexts, freq, context_len, meta = prefetched
+        else:
+            contexts, freq, context_len, meta = load_contexts_from_lotsa_cache(cache_dir, union_indices, hf_cache_dir)
+        for path in missing_backbones:
+            save_v1_backbone(compact.dst_for(path, src_root, dst_root), contexts, freq, context_len, encoder, meta)
     else:
-        contexts, freq, context_len, meta = load_contexts_from_lotsa_cache(cache_dir, union_indices, hf_cache_dir)
-    for path in sorted(cache_dir.glob("backbone_emb_c*_*.pt")):
-        save_v1_backbone(compact.dst_for(path, src_root, dst_root), contexts, freq, context_len, encoder, meta)
+        print(f"[v1 reuse] {cache_dir.name} backbone already encoded; refreshing non-backbone files", flush=True)
     for path in sorted(cache_dir.glob("futures_c*_h*_*.pt")):
         horizon = compact.horizon_from_future_path(path)
         dst = compact.dst_for(path, src_root, dst_root)
@@ -331,16 +333,21 @@ def copy_real_group_v1(
 def copy_synth_group_v1(ds_dir_s: str, indices_s: set[int], src_root: Path, dst_root: Path, encoder: TimesFmV1Encoder) -> None:
     ds_dir = Path(ds_dir_s)
     backbone_paths = sorted(ds_dir.glob("backbone_emb_c*_h*_stride1.pt"))
-    if backbone_paths and compact.dst_for(backbone_paths[0], src_root, dst_root).exists():
-        print(f"[v1 skip] {ds_dir.name} already encoded, skipping", flush=True)
-        return
+    missing_backbones = [
+        path
+        for path in backbone_paths
+        if not compact.dst_for(path, src_root, dst_root).exists()
+    ]
     indices = sorted(indices_s)
     idx = torch.as_tensor(indices, dtype=torch.long)
-    contexts, freq, context_len = load_synth_contexts(ds_dir, indices)
-    for path in sorted(ds_dir.glob("backbone_emb_c*_h*_stride1.pt")):
-        src_backbone = torch.load(path, map_location="cpu", weights_only=False)
-        extra = compact.tensor_index_payload(src_backbone, idx, ["mu", "sigma"])
-        save_v1_backbone(compact.dst_for(path, src_root, dst_root), contexts, freq, context_len, encoder, extra)
+    if missing_backbones:
+        contexts, freq, context_len = load_synth_contexts(ds_dir, indices)
+        for path in missing_backbones:
+            src_backbone = torch.load(path, map_location="cpu", weights_only=False)
+            extra = compact.tensor_index_payload(src_backbone, idx, ["mu", "sigma"])
+            save_v1_backbone(compact.dst_for(path, src_root, dst_root), contexts, freq, context_len, encoder, extra)
+    elif backbone_paths:
+        print(f"[v1 reuse] {ds_dir.name} backbone already encoded; refreshing target files", flush=True)
     for paths, keys in [
         (sorted(ds_dir.glob("raw_futures_h*.pt")), ["futures_n"]),
         (sorted(ds_dir.glob("component_targets_h*.pt")), ["trend_n", "seasonal_n"]),
@@ -384,20 +391,17 @@ def prepare_train_cache(args: argparse.Namespace, encoder: TimesFmV1Encoder) -> 
         pending: Future | None = None
         pending_idx: int = -1
         for j, (cd, _) in enumerate(real_items):
-            if not _backbone_dst_exists(Path(cd), args.src_data_root, args.dst_data_root):
+            if _missing_backbone_dsts(Path(cd), args.src_data_root, args.dst_data_root):
                 pending = pool.submit(_load_real, cd, real_items[j][1])
                 pending_idx = j
                 break
 
         for i, (cache_dir, rows) in enumerate(real_items):
-            if _backbone_dst_exists(Path(cache_dir), args.src_data_root, args.dst_data_root):
-                print(f"[v1 skip] {Path(cache_dir).name} already encoded, skipping", flush=True)
-                continue
-
+            missing_current = bool(_missing_backbone_dsts(Path(cache_dir), args.src_data_root, args.dst_data_root))
             print(f"[train real] {Path(cache_dir).name}", flush=True)
 
             # Get prefetched data (blocks until ready — overlapped with previous GPU encode)
-            if pending is not None and pending_idx == i:
+            if missing_current and pending is not None and pending_idx == i:
                 prefetched = pending.result()
                 pending = None
             else:
@@ -405,12 +409,13 @@ def prepare_train_cache(args: argparse.Namespace, encoder: TimesFmV1Encoder) -> 
 
             # Pre-submit NEXT item's I/O load BEFORE starting GPU encode
             # so data loading overlaps with the GPU work below
-            for j in range(i + 1, len(real_items)):
-                next_cd, next_rows = real_items[j]
-                if not _backbone_dst_exists(Path(next_cd), args.src_data_root, args.dst_data_root):
-                    pending = pool.submit(_load_real, next_cd, next_rows)
-                    pending_idx = j
-                    break
+            if pending is None:
+                for j in range(i + 1, len(real_items)):
+                    next_cd, next_rows = real_items[j]
+                    if _missing_backbone_dsts(Path(next_cd), args.src_data_root, args.dst_data_root):
+                        pending = pool.submit(_load_real, next_cd, next_rows)
+                        pending_idx = j
+                        break
 
             copy_real_group_v1(cache_dir, rows, args.src_data_root, args.dst_data_root, encoder, args.hf_cache_dir, prefetched)
             gc.collect()
