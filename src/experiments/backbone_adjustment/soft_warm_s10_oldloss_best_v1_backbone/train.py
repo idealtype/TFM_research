@@ -99,7 +99,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--fourier_steps", type=int, default=5000)
     parser.add_argument("--fourier_batch_size", type=int, default=256)
     # nonF training
-    parser.add_argument("--nonf_steps", type=int, default=3000)
+    parser.add_argument("--nonf_steps", type=int, default=0,
+                        help="Disabled by default for v1 backbone runs; pass a positive value only for intentional nonF training.")
     parser.add_argument("--nonf_batch_size", type=int, default=256)
     parser.add_argument("--nonf_stages", nargs="+",
                         choices=list(NONF_STAGE_CACHE_DIRS.keys()),

@@ -10,7 +10,8 @@ cd "$SOFT_MASK_DIR"
 
 python "$SOFT_MASK_DIR/train.py" \
   --device "$DEVICE" \
-  --results_root "$RESULTS_ROOT"
+  --results_root "$RESULTS_ROOT" \
+  --skip_nonf
 
 TFM_ARGS=()
 if [[ "$SKIP_TFM" == "1" ]]; then
