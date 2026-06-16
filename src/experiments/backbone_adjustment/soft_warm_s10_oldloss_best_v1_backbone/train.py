@@ -128,6 +128,20 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def validate_same_rows(path_a: Path | str, name_a: str, tensor_a: torch.Tensor,
+                       path_b: Path | str, name_b: str, tensor_b: torch.Tensor) -> None:
+    rows_a = int(tensor_a.shape[0])
+    rows_b = int(tensor_b.shape[0])
+    if rows_a != rows_b:
+        raise ValueError(
+            f"Row mismatch between cached tensors: {name_a} rows={rows_a} ({path_a}) "
+            f"vs {name_b} rows={rows_b} ({path_b}). "
+            "This usually means a partial/stale v1 cache mixed compact backbone files "
+            "with full-size target files. Re-run v1 recache after the partial-cache fix "
+            "or remove the affected COMPACT_DST cache directory."
+        )
+
+
 # ---------------------------------------------------------------------------
 # Model loading
 # ---------------------------------------------------------------------------
@@ -273,6 +287,8 @@ class FourierSynthPayloadCache:
         raw = torch.load(group["raw_path"], map_location="cpu", weights_only=False)
         embeddings = backbone["embeddings"].float()
         future_n = raw["futures_n"].float()
+        validate_same_rows(group["backbone_path"], "embeddings", embeddings,
+                           group["raw_path"], "futures_n", future_n)
         finite = torch.isfinite(embeddings).all(dim=1) & torch.isfinite(future_n).all(dim=1)
         valid_mask = raw.get("valid_mask")
         if valid_mask is not None:
@@ -477,6 +493,9 @@ class NonFPayloadCache:
         future_n = raw["futures_n"].float()
         trend_n = comp["trend_n"].float()
         seasonal_n = comp["seasonal_n"].float()
+        validate_same_rows(backbone_path, "embeddings", embeddings, raw_path, "futures_n", future_n)
+        validate_same_rows(backbone_path, "embeddings", embeddings, comp_path, "trend_n", trend_n)
+        validate_same_rows(backbone_path, "embeddings", embeddings, comp_path, "seasonal_n", seasonal_n)
 
         # Compute soft_mask physics-only basis on-the-fly
         bases = resolve_basis_for_dir(ds_dir, granularity, horizon, context_len)
@@ -657,6 +676,8 @@ class RealPayloadCache:
         futures = torch.load(group["future_path"], map_location="cpu", weights_only=False)
         embeddings = backbone["embeddings"].float()
         future_n = futures["futures_n"].float()
+        validate_same_rows(group["backbone_path"], "embeddings", embeddings,
+                           group["future_path"], "futures_n", future_n)
         finite = torch.isfinite(embeddings).all(dim=1) & torch.isfinite(future_n).all(dim=1)
         valid_mask = futures.get("valid_mask")
         if valid_mask is not None:
