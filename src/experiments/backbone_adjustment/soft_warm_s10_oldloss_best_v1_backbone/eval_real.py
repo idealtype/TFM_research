@@ -285,53 +285,9 @@ class FineMaskRealDataset(Dataset):
                 contexts.append(values)
             return np.stack(contexts, axis=0)
 
-        sample_info = self._load_sample_indices()
-        if sample_info is not None:
-            source_indices = sample_info["source_indices"].long()
-            _src_bb = Path(str(sample_info["source_backbone"]))
-            _old_prefix = Path("/home/sia2/project/data")
-            try:
-                _src_bb = Path(os.environ.get("DATA_ROOT", "/workspace/data")) / _src_bb.relative_to(_old_prefix)
-            except ValueError:
-                pass
-            source_backbone = self._load_source_backbone(_src_bb)
-            series_ids = source_backbone["series_ids"]
-            win_starts = source_backbone["win_starts"]
-            dataset = self._load_hf_dataset()
-            if dataset is None:
-                return None
-            series_cache = {}
-            contexts = []
-            for local_idx in local_indices.tolist():
-                source_idx = int(source_indices[int(local_idx)])
-                series_id = int(series_ids[source_idx])
-                if series_id not in series_cache:
-                    series_cache[series_id] = target_values(dataset[series_id])
-                start = int(win_starts[source_idx])
-                values = series_cache[series_id][start: start + self.context_len]
-                if len(values) != self.context_len:
-                    return None
-                contexts.append(values.astype(np.float32, copy=False))
-            return np.stack(contexts, axis=0)
-
-        cloudops_index = self._load_cloudops_index()
-        if cloudops_index is not None and self.dataset_name == "alibaba_cluster_trace_2018":
-            dataset = self._load_hf_dataset()
-            if dataset is None:
-                return None
-            series_cache = {}
-            contexts = []
-            for local_idx in local_indices.tolist():
-                row = cloudops_index.iloc[int(local_idx)]
-                series_id = int(row["series_id"])
-                if series_id not in series_cache:
-                    series_cache[series_id] = target_values(dataset[series_id])
-                start = int(row["win_start"])
-                values = series_cache[series_id][start: start + self.context_len]
-                if len(values) != self.context_len:
-                    return None
-                contexts.append(values.astype(np.float32, copy=False))
-            return np.stack(contexts, axis=0)
+        # TFM context is only available from pre-cached files (raw_contexts_c*.pt or raw.parquet).
+        # Do not fall back to HF reload at eval time: the prepare script generates the cache
+        # file when data is available; missing file means TFM context is unavailable.
         return None
 
 
