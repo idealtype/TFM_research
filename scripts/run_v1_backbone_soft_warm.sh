@@ -40,17 +40,45 @@ snapshot_download(
 PY
 fi
 
-if [[ "${SKIP_RECACHE:-0}" == "1" ]]; then
+cache_ready() {
+  [[ -d "$COMPACT_DST" ]] || return 1
+  [[ -d "$REAL_EVAL_DST" ]] || return 1
+  find "$COMPACT_DST" -name 'backbone_emb*.pt' -print -quit | grep -q . || return 1
+  find "$COMPACT_DST" -name 'futures*.pt' -print -quit | grep -q . || return 1
+  find "$REAL_EVAL_DST" -name 'backbone_emb*.pt' -print -quit | grep -q . || return 1
+  find "$REAL_EVAL_DST" -name 'futures*.pt' -print -quit | grep -q . || return 1
+}
+
+compact_ready() {
+  [[ -d "$COMPACT_DST" ]] || return 1
+  find "$COMPACT_DST" -name 'backbone_emb*.pt' -print -quit | grep -q . || return 1
+  find "$COMPACT_DST" -name 'futures*.pt' -print -quit | grep -q . || return 1
+}
+
+RUN_RECACHE=0
+SKIP_TRAIN_CACHE_FLAG=""
+if [[ "${FORCE_RECACHE:-0}" == "1" ]]; then
+  echo "[recache] FORCE_RECACHE=1: rebuilding v1 compact caches"
+  RUN_RECACHE=1
+elif [[ "${SKIP_RECACHE:-0}" == "1" ]]; then
   echo "[skip] SKIP_RECACHE=1: reusing existing cache at $COMPACT_DST"
-  if [[ ! -d "$COMPACT_DST" ]]; then
-    echo "[error] COMPACT_DST does not exist: $COMPACT_DST" >&2
+  if ! cache_ready; then
+    echo "[error] requested SKIP_RECACHE=1, but v1 compact caches are incomplete" >&2
+    echo "[error] COMPACT_DST=$COMPACT_DST REAL_EVAL_DST=$REAL_EVAL_DST" >&2
     exit 1
   fi
-  if [[ ! -d "$REAL_EVAL_DST" ]]; then
-    echo "[error] REAL_EVAL_DST does not exist: $REAL_EVAL_DST" >&2
-    exit 1
-  fi
+elif cache_ready; then
+  echo "[skip] existing v1 compact caches found; reusing COMPACT_DST=$COMPACT_DST REAL_EVAL_DST=$REAL_EVAL_DST"
+elif compact_ready; then
+  echo "[partial] compact cache exists; building only real_eval cache (skipping train cache plan)"
+  RUN_RECACHE=1
+  SKIP_TRAIN_CACHE_FLAG="--skip_train_cache"
 else
+  echo "[recache] v1 compact caches not found; building from DATA_ROOT=$DATA_ROOT"
+  RUN_RECACHE=1
+fi
+
+if [[ "$RUN_RECACHE" == "1" ]]; then
   python "$REPO_ROOT/src/data_prep/prepare_v1_backbone_data.py" \
     --src_data_root "$DATA_ROOT" \
     --dst_data_root "$COMPACT_DST" \
@@ -71,7 +99,8 @@ else
     --residual_steps 500 \
     --synth_interval 10 \
     --real_group_chunk_steps 63 \
-    --skip_lotsa_subsets HZMETRO SHMETRO
+    --skip_lotsa_subsets HZMETRO SHMETRO \
+    ${SKIP_TRAIN_CACHE_FLAG}
 fi
 
 DATA_ROOT="$COMPACT_DST" \
