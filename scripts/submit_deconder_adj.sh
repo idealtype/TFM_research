@@ -96,6 +96,9 @@ echo "[pre-cache] Copying compact pool to /tmp/data..."
 mkdir -p /tmp/data
 cp -r /workspace/data/${COMPACT_POOL}/. /tmp/data/
 echo "[pre-cache] Done: \$(du -sh /tmp/data | cut -f1)"
+echo "[validate] Checking compact pool integrity..."
+python /tmp/tfm_project/src/data_prep/validate_compact_pool.py /tmp/data
+echo "[validate] OK"
 
 export DATA_ROOT=/tmp/data
 export PROJECT_ROOT=/tmp/tfm_project

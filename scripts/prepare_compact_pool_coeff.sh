@@ -17,7 +17,7 @@ set -euo pipefail
 SRC_COMMIT="$(git rev-parse HEAD)"
 IMAGE="ghcr.io/idealtype/tfm-research:1a9556b27f678fdc3859e1e75b9c373160b49caa"
 VOLUME="objvol-edwuqaa94ii3:/workspace/data"
-RESOURCE="resourcespec-a100x1"
+RESOURCE="resourcespec-grlxx3knwzps"
 
 # ---------- training config (must match coeffloss job scripts) ----------
 BATCH_SIZE=1024
@@ -75,6 +75,8 @@ python /tmp/tfm_project/src/data_prep/prepare_data.py \\
   --residual_steps ${RESIDUAL_STEPS} \\
   --real_group_chunk_steps ${REAL_GROUP_CHUNK_STEPS} \\
   --num_workers 8
+echo '[validate] Checking compact pool integrity...'
+python /tmp/tfm_project/src/data_prep/validate_compact_pool.py ${COMPACT_DST}
 echo '=== compact pool done ==='"
 
 OUTPUT=$(vesslctl job create \
