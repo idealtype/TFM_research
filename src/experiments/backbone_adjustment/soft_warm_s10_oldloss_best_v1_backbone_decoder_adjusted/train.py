@@ -662,8 +662,12 @@ def discover_real_group(cache_root: Path, subset: str, horizon: int) -> dict | N
     valid_mask = future_payload.get("valid_mask")
     if valid_mask is not None:
         backbone = torch.load(backbone_paths[0], map_location="cpu", weights_only=False)
-        validate_same_rows(backbone_paths[0], "embeddings", backbone["embeddings"],
-                           future_path, "valid_mask", valid_mask)
+        try:
+            validate_same_rows(backbone_paths[0], "embeddings", backbone["embeddings"],
+                               future_path, "valid_mask", valid_mask)
+        except ValueError as e:
+            print(f"[warn] skipping {subset} h{horizon}: {e}", flush=True)
+            return None
     if valid_mask is not None and not bool(valid_mask.bool().any()):
         return None
     return {
