@@ -185,6 +185,7 @@ class FineMaskRealDataset(Dataset):
         self._source_backbone = None
         self._sample_indices = None
         self._cloudops_index = None
+        self._raw_contexts = None
 
     def __len__(self) -> int:
         return len(self.indices)
@@ -204,6 +205,16 @@ class FineMaskRealDataset(Dataset):
                 return None
             self._raw_df = pd.read_parquet(raw_path)
         return self._raw_df
+
+    def _load_raw_contexts(self):
+        if self._raw_contexts is None:
+            path = self.cache_dir / f"raw_contexts_c{self.context_len}.pt"
+            if not path.exists():
+                return None
+            payload = torch.load(path, map_location="cpu", weights_only=False)
+            contexts = payload["contexts"] if isinstance(payload, dict) else payload
+            self._raw_contexts = contexts.float() if torch.is_tensor(contexts) else torch.as_tensor(contexts).float()
+        return self._raw_contexts
 
     def _load_hf_dataset(self):
         if self._hf_dataset is None:
@@ -238,6 +249,12 @@ class FineMaskRealDataset(Dataset):
         return self._cloudops_index
 
     def raw_contexts_for_local_indices(self, local_indices: torch.Tensor) -> np.ndarray | None:
+        raw_contexts = self._load_raw_contexts()
+        if raw_contexts is not None:
+            if int(raw_contexts.shape[0]) < int(local_indices.max().item()) + 1:
+                return None
+            return raw_contexts.index_select(0, local_indices.long()).numpy()
+
         raw_df = self._load_raw_df()
         if raw_df is not None:
             contexts = []

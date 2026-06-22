@@ -6,19 +6,26 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DATA_ROOT="${DATA_ROOT:-/workspace/data}"
 WORK_ROOT="${WORK_ROOT:-/tmp/tfm_v1_backbone}"
 DEVICE="${DEVICE:-cuda:0}"
-HF_HOME="${HF_HOME:-$WORK_ROOT/hf}"
+HF_HOME="${HF_HOME:-$DATA_ROOT/.cache/huggingface}"
+HF_HUB_CACHE="${HF_HUB_CACHE:-$HF_HOME/hub}"
 HF_CACHE_DIR="${HF_CACHE_DIR:-$HF_HOME}"
-V1_REPO_DIR="${V1_REPO_DIR:-$WORK_ROOT/timesfm_origin}"
-V1_CKPT_DIR="${V1_CKPT_DIR:-$WORK_ROOT/timesfm-1.0-200m-pytorch}"
+if [[ -d "$REPO_ROOT/timesfm_origin/v1/src" ]]; then
+  V1_REPO_DIR="${V1_REPO_DIR:-$REPO_ROOT/timesfm_origin}"
+else
+  V1_REPO_DIR="${V1_REPO_DIR:-$DATA_ROOT/.cache/timesfm_origin}"
+fi
+V1_CKPT_DIR="${V1_CKPT_DIR:-$DATA_ROOT/.cache/timesfm-1.0-200m-pytorch}"
 V1_CKPT_PATH="$V1_CKPT_DIR/torch_model.ckpt"
-COMPACT_DST="${COMPACT_DST:-$WORK_ROOT/data_v1_backbone}"
-REAL_EVAL_DST="${REAL_EVAL_DST:-$WORK_ROOT/real_eval_lot_ett_v1_backbone}"
+COMPACT_DST="${COMPACT_DST:-$DATA_ROOT/data_v1_backbone}"
+REAL_EVAL_DST="${REAL_EVAL_DST:-$DATA_ROOT/real_eval_lot_ett_v1_backbone}"
 EXP_DIR="${EXP_DIR:-src/experiments/backbone_adjustment/soft_warm_s10_oldloss_best_v1_backbone}"
 EXP_NAME="$(basename "$EXP_DIR")"
-RESULTS_ROOT="${RESULTS_ROOT:-$WORK_ROOT/results/$EXP_NAME}"
+RUN_TAG="${RUN_TAG:-$(date +%Y%m%d_%H%M)_$EXP_NAME}"
+RESULTS_ROOT="${RESULTS_ROOT:-$DATA_ROOT/results/backbone_adjustment/$RUN_TAG}"
+LOCALIZE_CACHE="${LOCALIZE_CACHE:-1}"
 
-mkdir -p "$WORK_ROOT" "$HF_HOME" "$V1_CKPT_DIR" "$(dirname "$RESULTS_ROOT")"
-export DATA_ROOT HF_HOME
+mkdir -p "$WORK_ROOT" "$HF_HOME" "$HF_HUB_CACHE" "$V1_CKPT_DIR" "$(dirname "$RESULTS_ROOT")"
+export DATA_ROOT HF_HOME HF_HUB_CACHE
 export TIMESFM_V1_SRC="$V1_REPO_DIR/v1/src"
 export TIMESFM_V1_CHECKPOINT_PATH="$V1_CKPT_PATH"
 
@@ -47,6 +54,7 @@ cache_ready() {
   find "$COMPACT_DST" -name 'futures*.pt' -print -quit | grep -q . || return 1
   find "$REAL_EVAL_DST" -name 'backbone_emb*.pt' -print -quit | grep -q . || return 1
   find "$REAL_EVAL_DST" -name 'futures*.pt' -print -quit | grep -q . || return 1
+  find "$REAL_EVAL_DST" -name 'raw_contexts_c*.pt' -print -quit | grep -q . || return 1
 }
 
 compact_ready() {
@@ -103,8 +111,31 @@ if [[ "$RUN_RECACHE" == "1" ]]; then
     ${SKIP_TRAIN_CACHE_FLAG}
 fi
 
-DATA_ROOT="$COMPACT_DST" \
-REAL_ROOT="$REAL_EVAL_DST" \
+RUN_COMPACT_ROOT="$COMPACT_DST"
+RUN_REAL_EVAL_ROOT="$REAL_EVAL_DST"
+if [[ "$LOCALIZE_CACHE" == "1" ]]; then
+  RUN_COMPACT_ROOT="$WORK_ROOT/data_v1_backbone"
+  RUN_REAL_EVAL_ROOT="$WORK_ROOT/real_eval_lot_ett_v1_backbone"
+  if [[ "$(readlink -f "$COMPACT_DST")" == "$(readlink -f "$RUN_COMPACT_ROOT")" ]]; then
+    echo "[localize] COMPACT_DST is already local: $RUN_COMPACT_ROOT"
+  else
+    echo "[localize] copying train compact cache to local workspace"
+    rm -rf "$RUN_COMPACT_ROOT"
+    mkdir -p "$RUN_COMPACT_ROOT"
+    cp -a "$COMPACT_DST"/. "$RUN_COMPACT_ROOT"/
+  fi
+  if [[ "$(readlink -f "$REAL_EVAL_DST")" == "$(readlink -f "$RUN_REAL_EVAL_ROOT")" ]]; then
+    echo "[localize] REAL_EVAL_DST is already local: $RUN_REAL_EVAL_ROOT"
+  else
+    echo "[localize] copying real eval cache to local workspace"
+    rm -rf "$RUN_REAL_EVAL_ROOT"
+    mkdir -p "$RUN_REAL_EVAL_ROOT"
+    cp -a "$REAL_EVAL_DST"/. "$RUN_REAL_EVAL_ROOT"/
+  fi
+fi
+
+DATA_ROOT="$RUN_COMPACT_ROOT" \
+REAL_ROOT="$RUN_REAL_EVAL_ROOT" \
 RESULTS_ROOT="$RESULTS_ROOT" \
 DEVICE="$DEVICE" \
 SYNTH_INTERVAL=10 \
