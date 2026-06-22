@@ -186,6 +186,7 @@ class FineMaskRealDataset(Dataset):
         self._sample_indices = None
         self._cloudops_index = None
         self._raw_contexts = None
+        self._hf_dataset_attempted = False
 
     def __len__(self) -> int:
         return len(self.indices)
@@ -217,21 +218,22 @@ class FineMaskRealDataset(Dataset):
         return self._raw_contexts
 
     def _load_hf_dataset(self):
-        if self._hf_dataset is None:
-            try:
-                self._hf_dataset = load_dataset(
-                    "Salesforce/lotsa_data",
-                    self.dataset_name,
-                    split="train",
-                    streaming=False,
-                    cache_dir=self.hf_cache_dir,
-                )
-            except Exception as exc:
-                log_progress(
-                    f"  TimesFM context unavailable for {self.dataset_name}: "
-                    f"{type(exc).__name__}: {exc}"
-                )
-                return None
+        if self._hf_dataset_attempted:
+            return self._hf_dataset
+        self._hf_dataset_attempted = True
+        try:
+            self._hf_dataset = load_dataset(
+                "Salesforce/lotsa_data",
+                self.dataset_name,
+                split="train",
+                streaming=False,
+                cache_dir=self.hf_cache_dir,
+            )
+        except Exception as exc:
+            log_progress(
+                f"  TimesFM context unavailable for {self.dataset_name}: "
+                f"{type(exc).__name__}: {exc}"
+            )
         return self._hf_dataset
 
     def _load_sample_indices(self):
