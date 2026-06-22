@@ -56,17 +56,25 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--residual_steps", type=int, default=500)
     parser.add_argument("--real_group_chunk_steps", type=int, default=63)
     parser.add_argument("--num_workers", type=int, default=8)
+    parser.add_argument(
+        "--exp_dir",
+        type=Path,
+        default=None,
+        help="Experiment directory whose train.py to import (default: nogate_softmask). "
+             "Allows building compact pools for other experiments without code duplication.",
+    )
     return parser.parse_args()
 
 
-def import_nogate_train(src_data_root: Path):
-    """Import nogate_softmask train.py after binding DATA_ROOT to src_data_root."""
+def import_experiment_train(src_data_root: Path, exp_dir: Path | None = None):
+    """Import train.py from exp_dir (default: nogate_softmask) with DATA_ROOT set."""
     os.environ["DATA_ROOT"] = str(src_data_root)
     os.environ.setdefault("PROJECT_ROOT", str(REPO_ROOT))
 
-    nogate_s = str(NOGATE_DIR)
-    if nogate_s not in sys.path:
-        sys.path.insert(0, nogate_s)
+    target_dir = exp_dir if exp_dir is not None else NOGATE_DIR
+    target_s = str(target_dir)
+    if target_s not in sys.path:
+        sys.path.insert(0, target_s)
     repo_s = str(REPO_ROOT)
     if repo_s not in sys.path:
         sys.path.insert(0, repo_s)
@@ -75,10 +83,14 @@ def import_nogate_train(src_data_root: Path):
         import train as base  # type: ignore
     except ImportError as exc:
         raise SystemExit(
-            "Failed to import src/experiments/nogate_softmask/train.py. "
+            f"Failed to import train.py from {target_dir}. "
             "Run from the repository environment with the project dependencies installed."
         ) from exc
     return base
+
+
+# Keep old name as alias for backward compatibility
+import_nogate_train = import_experiment_train
 
 
 def path_under(path: str | Path, root: Path) -> Path:
@@ -449,6 +461,30 @@ def copy_real_group(
     return src_bytes, dst_bytes
 
 
+def _slice_tensor_dict(payload: dict, idx: torch.Tensor) -> dict:
+    """Index-select all top-level tensors whose dim0 matches idx length expectation.
+
+    Handles flat dicts (keys → tensors) as well as one level of nesting
+    (keys → dicts of tensors), which covers seasonal_coefficients files that
+    store per-family tensors either at the top level or under a nested key.
+    """
+    n = payload[next(iter(payload))].shape[0] if payload else 0
+    out: dict = {}
+    for key, val in payload.items():
+        if torch.is_tensor(val) and val.dim() >= 1 and val.shape[0] == n:
+            out[key] = val.index_select(0, idx).contiguous()
+        elif isinstance(val, dict):
+            out[key] = {
+                k2: v2.index_select(0, idx).contiguous()
+                if torch.is_tensor(v2) and v2.dim() >= 1 and v2.shape[0] == n
+                else v2
+                for k2, v2 in val.items()
+            }
+        else:
+            out[key] = val
+    return out
+
+
 def copy_synth_group(ds_dir_s: str, indices_s: set[int], src_root: Path, dst_root: Path) -> tuple[int, int]:
     ds_dir = Path(ds_dir_s)
     idx = torch.as_tensor(sorted(indices_s), dtype=torch.long)
@@ -458,7 +494,11 @@ def copy_synth_group(ds_dir_s: str, indices_s: set[int], src_root: Path, dst_roo
     backbone_files = sorted(ds_dir.glob("backbone_emb_c*_h*_stride1.pt"))
     raw_files = sorted(ds_dir.glob("raw_futures_h*.pt"))
     component_files = sorted(ds_dir.glob("component_targets_h*.pt"))
-    slice_files = set(backbone_files + raw_files + component_files)
+    # seasonal_coefficients_h*.pt and seasonal_coefficients_fine_mask_h*.pt must
+    # also be sliced — they were previously copied whole, causing a row-count
+    # mismatch against the compacted backbone when coeff_effective loss is used.
+    coeff_files = sorted(ds_dir.glob("seasonal_coefficients*.pt"))
+    slice_files = set(backbone_files + raw_files + component_files + coeff_files)
 
     for path in backbone_files:
         payload = torch.load(path, map_location="cpu", weights_only=False)
@@ -477,6 +517,13 @@ def copy_synth_group(ds_dir_s: str, indices_s: set[int], src_root: Path, dst_roo
     for path in component_files:
         payload = torch.load(path, map_location="cpu", weights_only=False)
         out = tensor_index_payload(payload, idx, ["trend_n", "seasonal_n"])
+        s, d = save_torch(out, dst_for(path, src_root, dst_root), file_size(path))
+        src_bytes += s
+        dst_bytes += d
+
+    for path in coeff_files:
+        payload = torch.load(path, map_location="cpu", weights_only=False)
+        out = _slice_tensor_dict(payload, idx)
         s, d = save_torch(out, dst_for(path, src_root, dst_root), file_size(path))
         src_bytes += s
         dst_bytes += d
@@ -580,7 +627,7 @@ def main() -> None:
         flush=True,
     )
 
-    base = import_nogate_train(args.src_data_root)
+    base = import_experiment_train(args.src_data_root, args.exp_dir)
     plan = simulate_schedule(base, args)
     print_row_summary(plan)
 
