@@ -24,7 +24,8 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import torch
-from datasets import load_dataset
+from datasets import load_dataset, load_from_disk
+from huggingface_hub import snapshot_download
 from tqdm import tqdm
 
 
@@ -41,6 +42,7 @@ from shared_utils import target_values  # noqa: E402
 
 
 MODEL_REPO = "google/timesfm-1.0-200m-pytorch"
+LOTSA_REPO = "Salesforce/lotsa_data"
 EMBED_DIM = 1280
 DEFAULT_SRC_DATA_ROOT = Path(os.environ.get("DATA_ROOT", "/workspace/data"))
 DEFAULT_DST_DATA_ROOT = Path("/tmp/data_v1_backbone")
@@ -104,6 +106,35 @@ def freq_bucket(freq: str) -> int:
     if freq in {"quarterly", "yearly", "q", "qs", "qe", "y", "ys", "a", "as"}:
         return 2
     return 0
+
+
+def load_lotsa_subset(subset: str, hf_cache_dir: str | None):
+    """Load one LOTSA subset without depending on HF named-config metadata.
+
+    Some VESSL volumes have an old/partial HF cache where
+    load_dataset("Salesforce/lotsa_data", subset) reports only the default
+    config. The repo stores each subset as a load_from_disk-ready Arrow folder,
+    so fall back to downloading/reusing only that folder.
+    """
+    try:
+        return load_dataset(LOTSA_REPO, subset, split="train", streaming=False, cache_dir=hf_cache_dir)
+    except Exception as exc:
+        print(
+            f"[lotsa fallback] named config load failed for {subset}: "
+            f"{type(exc).__name__}: {exc}",
+            flush=True,
+        )
+    local_dir = snapshot_download(
+        LOTSA_REPO,
+        repo_type="dataset",
+        cache_dir=hf_cache_dir,
+        allow_patterns=[f"{subset}/*"],
+    )
+    subset_dir = Path(local_dir) / subset
+    if not subset_dir.exists():
+        raise FileNotFoundError(f"LOTSA subset folder not found after snapshot_download: {subset_dir}")
+    print(f"[lotsa fallback] loading {subset} from {subset_dir}", flush=True)
+    return load_from_disk(str(subset_dir))
 
 
 class TimesFmV1Encoder:
@@ -199,7 +230,7 @@ def load_contexts_from_lotsa_cache(
     if series_ids is None or win_starts is None:
         raise ValueError(f"source cache lacks series_ids/win_starts: {backbone_path}")
     subset = cache_dir.name
-    dataset = load_dataset("Salesforce/lotsa_data", subset, split="train", streaming=False, cache_dir=hf_cache_dir)
+    dataset = load_lotsa_subset(subset, hf_cache_dir)
     series_cache: dict[int, np.ndarray] = {}
     contexts: list[np.ndarray] = []
     union_idx = torch.as_tensor(union_indices, dtype=torch.long)
@@ -494,11 +525,7 @@ def recache_eval_backbone(cache_dir: Path, real_root: Path, dst_root: Path, enco
         series_ids = source_backbone["series_ids"]
         win_starts = source_backbone["win_starts"]
         dataset_name = cache_dir.name
-        try:
-            dataset = load_dataset("Salesforce/lotsa_data", dataset_name, split="train", streaming=False, cache_dir=hf_cache_dir)
-        except ValueError as _hf_err:
-            print(f"[eval recache] skip {cache_dir.name}: HF config not found ({_hf_err})", flush=True)
-            return
+        dataset = load_lotsa_subset(dataset_name, hf_cache_dir)
         series_cache: dict[int, np.ndarray] = {}
         rows = []
         for source_idx_t in source_indices:
@@ -513,7 +540,7 @@ def recache_eval_backbone(cache_dir: Path, real_root: Path, dst_root: Path, enco
         contexts = np.stack(rows, axis=0)
     elif (real_root / "cloudops_index.parquet").exists() and cache_dir.name == "alibaba_cluster_trace_2018":
         index = pd.read_parquet(real_root / "cloudops_index.parquet")
-        dataset = load_dataset("Salesforce/lotsa_data", cache_dir.name, split="train", streaming=False, cache_dir=hf_cache_dir)
+        dataset = load_lotsa_subset(cache_dir.name, hf_cache_dir)
         series_cache = {}
         rows = []
         for i in range(row_count):

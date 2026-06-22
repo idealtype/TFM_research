@@ -89,16 +89,45 @@ fi
 # ---------- inline job script (base64 encoded to avoid shell quoting issues) ----------
 SCRIPT=$(cat << SCRIPT_EOF
 set -e
-git clone https://github.com/idealtype/TFM_research.git /tmp/tfm_project
-cd /tmp/tfm_project && git checkout ${COMMIT}
+log() { echo "[\$(date '+%Y-%m-%d %H:%M:%S')] \$*"; }
+run_with_heartbeat() {
+  local label="\$1"
+  shift
+  log "START: \${label}"
+  "\$@" &
+  local pid=\$!
+  (
+    sleep 60
+    while kill -0 "\$pid" 2>/dev/null; do
+      log "RUNNING: \${label} pid=\${pid}"
+      sleep 60
+    done
+  ) &
+  local heartbeat_pid=\$!
+  wait "\$pid"
+  local status=\$?
+  kill "\$heartbeat_pid" 2>/dev/null || true
+  wait "\$heartbeat_pid" 2>/dev/null || true
+  if [ "\$status" -ne 0 ]; then
+    log "FAILED: \${label} status=\${status}"
+    return "\$status"
+  fi
+  log "DONE: \${label}"
+}
+log "job started"
+run_with_heartbeat "git clone repository" git clone https://github.com/idealtype/TFM_research.git /tmp/tfm_project
+cd /tmp/tfm_project
+log "git checkout ${COMMIT}"
+git checkout ${COMMIT}
+log "checked out commit \$(git rev-parse HEAD)"
 
-echo "[pre-cache] Copying compact pool to /tmp/data..."
+log "[pre-cache] Copying compact pool to /tmp/data..."
 mkdir -p /tmp/data
-cp -r /workspace/data/${COMPACT_POOL}/. /tmp/data/
-echo "[pre-cache] Done: \$(du -sh /tmp/data | cut -f1)"
-echo "[validate] Checking compact pool integrity..."
-python /tmp/tfm_project/src/data_prep/validate_compact_pool.py /tmp/data/synthetic/func_dec_syn_cent_fourier_all_train_cache_10_4_2_8
-echo "[validate] OK"
+run_with_heartbeat "copy compact pool ${COMPACT_POOL}" cp -r /workspace/data/${COMPACT_POOL}/. /tmp/data/
+log "[pre-cache] Done: \$(du -sh /tmp/data | cut -f1)"
+log "[validate] Checking compact pool integrity..."
+run_with_heartbeat "validate compact pool" python -u /tmp/tfm_project/src/data_prep/validate_compact_pool.py /tmp/data/synthetic/func_dec_syn_cent_fourier_all_train_cache_10_4_2_8
+log "[validate] OK"
 
 export DATA_ROOT=/tmp/data
 export PROJECT_ROOT=/tmp/tfm_project
@@ -111,7 +140,8 @@ mkdir -p "${TRAIN_ROOT}"
 run_h() {
   local h=\$1
   mkdir -p "${TRAIN_ROOT}/h\${h}"
-  python "${EXP_DIR}/train_warm_real_mix.py" \\
+  log "START: train h\${h}"
+  python -u "${EXP_DIR}/train_warm_real_mix.py" \\
     --init_checkpoint_dir none \\
     --results_root "${TRAIN_ROOT}/h\${h}" \\
     --horizons "\${h}" \\
@@ -127,12 +157,16 @@ run_h() {
     --gate_l1_weight ${GATE_L1} \\
     --domain_config "${DOMAIN_CONFIG}" \\
     ${EXTRA_ARGS} \\
-    2>&1 | sed "s/^/[h\${h}] /"
+    2>&1 | stdbuf -oL -eL sed "s/^/[h\${h}] /"
+  log "DONE: train h\${h}"
 }
+log "START: parallel horizon training"
 for h in 96 192 336 720; do run_h \$h & done
 wait
+log "DONE: parallel horizon training"
 
-python - "${RESULTS}" "${TRAIN_ROOT}" 96 192 336 720 << 'PY'
+log "START: merge checkpoints"
+python -u - "${RESULTS}" "${TRAIN_ROOT}" 96 192 336 720 << 'PY'
 import json, shutil, sys
 from pathlib import Path
 results = Path(sys.argv[1])
@@ -162,12 +196,15 @@ for h in horizons:
 (results / "train_result.json").write_text(json.dumps(merged, indent=2))
 print("[merge] ok")
 PY
+log "DONE: merge checkpoints"
 
-DEVICE=\$DEVICE python "${EXP_DIR}/eval_real_parallel.py" \\
+log "START: real evaluation"
+DEVICE=\$DEVICE python -u "${EXP_DIR}/eval_real_parallel.py" \\
   --checkpoint_root "${RESULTS}" \\
   --results_root "${RESULTS}/real_lot_ett" \\
   --real_root "${REAL_ROOT}"
-echo "=== DONE ==="
+log "DONE: real evaluation"
+log "=== DONE ==="
 SCRIPT_EOF
 )
 

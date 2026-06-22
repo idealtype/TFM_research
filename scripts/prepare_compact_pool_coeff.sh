@@ -55,18 +55,47 @@ if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
 fi
 
 JOB_CMD="set -e
-git clone https://github.com/idealtype/TFM_research.git /tmp/tfm_project
-cd /tmp/tfm_project && git checkout ${SRC_COMMIT}
+log() { echo \"[\$(date '+%Y-%m-%d %H:%M:%S')] \$*\"; }
+run_with_heartbeat() {
+  label=\"\$1\"
+  shift
+  log \"START: \${label}\"
+  \"\$@\" &
+  pid=\$!
+  (
+    sleep 60
+    while kill -0 \"\$pid\" 2>/dev/null; do
+      log \"RUNNING: \${label} pid=\${pid}\"
+      sleep 60
+    done
+  ) &
+  heartbeat_pid=\$!
+  wait \"\$pid\"
+  status=\$?
+  kill \"\$heartbeat_pid\" 2>/dev/null || true
+  wait \"\$heartbeat_pid\" 2>/dev/null || true
+  if [ \"\$status\" -ne 0 ]; then
+    log \"FAILED: \${label} status=\${status}\"
+    return \"\$status\"
+  fi
+  log \"DONE: \${label}\"
+}
+log 'job started'
+run_with_heartbeat 'git clone repository' git clone https://github.com/idealtype/TFM_research.git /tmp/tfm_project
+cd /tmp/tfm_project
+log 'git checkout ${SRC_COMMIT}'
+git checkout ${SRC_COMMIT}
+log \"checked out commit \$(git rev-parse HEAD)\"
 export DATA_ROOT=/workspace/data
 export PROJECT_ROOT=/tmp/tfm_project
 export HF_HOME=/workspace/data/.cache/huggingface
 export HF_HUB_CACHE=/workspace/data/.cache/huggingface/hub
 
-echo '[prepare] Removing stale pool if exists...'
+log '[prepare] Removing stale pool if exists...'
 rm -rf ${COMPACT_DST}
-echo '[prepare] Clean slate — starting fresh.'
+log '[prepare] Clean slate - starting fresh.'
 
-python /tmp/tfm_project/src/data_prep/prepare_data.py \\
+run_with_heartbeat 'prepare compact coeff pool' python -u /tmp/tfm_project/src/data_prep/prepare_data.py \\
   --src_data_root /workspace/data \\
   --dst_data_root ${COMPACT_DST} \\
   --exp_dir ${EXP_DIR} \\
@@ -80,9 +109,9 @@ python /tmp/tfm_project/src/data_prep/prepare_data.py \\
   --residual_steps ${RESIDUAL_STEPS} \\
   --real_group_chunk_steps ${REAL_GROUP_CHUNK_STEPS} \\
   --num_workers 8
-echo '[validate] Checking compact pool integrity...'
-python /tmp/tfm_project/src/data_prep/validate_compact_pool.py ${COMPACT_DST}/synthetic/func_dec_syn_cent_fourier_all_train_cache_10_4_2_8
-echo '=== compact pool done ==='"
+log '[validate] Checking compact pool integrity...'
+run_with_heartbeat 'validate compact coeff pool' python -u /tmp/tfm_project/src/data_prep/validate_compact_pool.py ${COMPACT_DST}/synthetic/func_dec_syn_cent_fourier_all_train_cache_10_4_2_8
+log '=== compact pool done ==='"
 
 OUTPUT=$(vesslctl job create \
     -n "prepare-compact-coeff-b1024-m2500" \

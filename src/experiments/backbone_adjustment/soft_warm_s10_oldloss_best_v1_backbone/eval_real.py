@@ -218,13 +218,20 @@ class FineMaskRealDataset(Dataset):
 
     def _load_hf_dataset(self):
         if self._hf_dataset is None:
-            self._hf_dataset = load_dataset(
-                "Salesforce/lotsa_data",
-                self.dataset_name,
-                split="train",
-                streaming=False,
-                cache_dir=self.hf_cache_dir,
-            )
+            try:
+                self._hf_dataset = load_dataset(
+                    "Salesforce/lotsa_data",
+                    self.dataset_name,
+                    split="train",
+                    streaming=False,
+                    cache_dir=self.hf_cache_dir,
+                )
+            except Exception as exc:
+                log_progress(
+                    f"  TimesFM context unavailable for {self.dataset_name}: "
+                    f"{type(exc).__name__}: {exc}"
+                )
+                return None
         return self._hf_dataset
 
     def _load_sample_indices(self):
@@ -283,6 +290,8 @@ class FineMaskRealDataset(Dataset):
             series_ids = source_backbone["series_ids"]
             win_starts = source_backbone["win_starts"]
             dataset = self._load_hf_dataset()
+            if dataset is None:
+                return None
             series_cache = {}
             contexts = []
             for local_idx in local_indices.tolist():
@@ -300,6 +309,8 @@ class FineMaskRealDataset(Dataset):
         cloudops_index = self._load_cloudops_index()
         if cloudops_index is not None and self.dataset_name == "alibaba_cluster_trace_2018":
             dataset = self._load_hf_dataset()
+            if dataset is None:
+                return None
             series_cache = {}
             contexts = []
             for local_idx in local_indices.tolist():
