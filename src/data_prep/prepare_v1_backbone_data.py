@@ -133,8 +133,21 @@ def load_lotsa_subset(subset: str, hf_cache_dir: str | None):
     subset_dir = Path(local_dir) / subset
     if not subset_dir.exists():
         raise FileNotFoundError(f"LOTSA subset folder not found after snapshot_download: {subset_dir}")
-    print(f"[lotsa fallback] loading {subset} from {subset_dir}", flush=True)
-    return load_from_disk(str(subset_dir))
+    # Try Arrow disk format first; snapshot may contain Parquet files instead
+    try:
+        print(f"[lotsa fallback] loading {subset} from disk at {subset_dir}", flush=True)
+        return load_from_disk(str(subset_dir))
+    except Exception as disk_exc:
+        print(
+            f"[lotsa fallback] load_from_disk failed for {subset}: "
+            f"{type(disk_exc).__name__}: {disk_exc} — trying parquet",
+            flush=True,
+        )
+    parquet_files = sorted(subset_dir.glob("**/*.parquet"))
+    if not parquet_files:
+        raise FileNotFoundError(f"No Arrow or Parquet data found for LOTSA subset: {subset_dir}")
+    print(f"[lotsa fallback] loading {subset} from {len(parquet_files)} parquet file(s)", flush=True)
+    return load_dataset("parquet", data_files=[str(f) for f in parquet_files], split="train")
 
 
 class TimesFmV1Encoder:
