@@ -494,7 +494,11 @@ def recache_eval_backbone(cache_dir: Path, real_root: Path, dst_root: Path, enco
         series_ids = source_backbone["series_ids"]
         win_starts = source_backbone["win_starts"]
         dataset_name = cache_dir.name
-        dataset = load_dataset("Salesforce/lotsa_data", dataset_name, split="train", streaming=False, cache_dir=hf_cache_dir)
+        try:
+            dataset = load_dataset("Salesforce/lotsa_data", dataset_name, split="train", streaming=False, cache_dir=hf_cache_dir)
+        except ValueError as _hf_err:
+            print(f"[eval recache] skip {cache_dir.name}: HF config not found ({_hf_err})", flush=True)
+            return
         series_cache: dict[int, np.ndarray] = {}
         rows = []
         for source_idx_t in source_indices:
