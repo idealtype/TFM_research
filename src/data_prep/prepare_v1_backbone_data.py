@@ -538,7 +538,15 @@ def recache_eval_backbone(cache_dir: Path, real_root: Path, dst_root: Path, enco
         series_ids = source_backbone["series_ids"]
         win_starts = source_backbone["win_starts"]
         dataset_name = cache_dir.name
-        dataset = load_lotsa_subset(dataset_name, hf_cache_dir)
+        try:
+            dataset = load_lotsa_subset(dataset_name, hf_cache_dir)
+        except Exception as exc:
+            print(
+                f"[eval recache] skip {dataset_name}: load_lotsa_subset failed — "
+                f"{type(exc).__name__}: {exc}",
+                flush=True,
+            )
+            return
         series_cache: dict[int, np.ndarray] = {}
         rows = []
         for source_idx_t in source_indices:
@@ -578,8 +586,7 @@ def recache_eval_backbone(cache_dir: Path, real_root: Path, dst_root: Path, enco
         dst_path = dst_root / src_path.relative_to(real_root)
         save_v1_backbone(dst_path, contexts, freq, context_len, encoder, extra)
         context_path = dst_path.parent / f"raw_contexts_c{context_len}.pt"
-        if not context_path.exists():
-            torch.save({"contexts": torch.from_numpy(contexts).float(), "context_len": context_len}, context_path)
+        torch.save({"contexts": torch.from_numpy(contexts).float(), "context_len": context_len}, context_path)
 
 
 def prepare_real_eval_cache(args: argparse.Namespace, encoder: TimesFmV1Encoder) -> None:
@@ -588,7 +595,13 @@ def prepare_real_eval_cache(args: argparse.Namespace, encoder: TimesFmV1Encoder)
     copy_tree_without_backbones(args.real_eval_root, args.real_eval_dst_root)
     for cache_dir in sorted({path.parent for path in args.real_eval_root.rglob("backbone_emb*.pt")}):
         print(f"[eval recache] {cache_dir.relative_to(args.real_eval_root)}", flush=True)
-        recache_eval_backbone(cache_dir, args.real_eval_root, args.real_eval_dst_root, encoder, args.hf_cache_dir)
+        try:
+            recache_eval_backbone(cache_dir, args.real_eval_root, args.real_eval_dst_root, encoder, args.hf_cache_dir)
+        except Exception as exc:
+            print(
+                f"[eval recache] ERROR {cache_dir.name}: {type(exc).__name__}: {exc} — skipping",
+                flush=True,
+            )
         gc.collect()
 
 
