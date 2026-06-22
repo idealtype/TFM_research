@@ -286,7 +286,13 @@ class FineMaskRealDataset(Dataset):
         sample_info = self._load_sample_indices()
         if sample_info is not None:
             source_indices = sample_info["source_indices"].long()
-            source_backbone = self._load_source_backbone(Path(sample_info["source_backbone"]))
+            _src_bb = Path(str(sample_info["source_backbone"]))
+            _old_prefix = Path("/home/sia2/project/data")
+            try:
+                _src_bb = Path(os.environ.get("DATA_ROOT", "/workspace/data")) / _src_bb.relative_to(_old_prefix)
+            except ValueError:
+                pass
+            source_backbone = self._load_source_backbone(_src_bb)
             series_ids = source_backbone["series_ids"]
             win_starts = source_backbone["win_starts"]
             dataset = self._load_hf_dataset()
