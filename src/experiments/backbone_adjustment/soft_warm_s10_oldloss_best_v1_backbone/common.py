@@ -64,6 +64,20 @@ FREQ_DAYS = {
     "yearly": 365.25,
 }
 
+TIMESFM_FREQ_ALIASES = {
+    "5_minutes": 0,
+    "10_minutes": 0,
+    "15_minutes": 0,
+    "half_hourly": 0,
+    "hourly": 0,
+    "H": 0,
+    "D": 0,
+    "daily": 0,
+    "weekly": 1,
+    "monthly": 1,
+    "yearly": 2,
+}
+
 DEFAULT_CONFIG = {
     "context_len": 512,
     "embed_dim": 1280,
@@ -539,12 +553,13 @@ class TimesFmV1ForecastWrapper:
     def __init__(self, model):
         self.model = model
 
-    def forecast(self, horizon: int, contexts: list[np.ndarray]):
+    def forecast(self, horizon: int, contexts: list[np.ndarray], freq: str | int = 0):
+        freq_id = int(freq) if isinstance(freq, int) else TIMESFM_FREQ_ALIASES.get(str(freq), 0)
         point, full = self.model.forecast(
             contexts,
-            freq=[0] * len(contexts),
+            freq=[freq_id] * len(contexts),
             forecast_context_len=min(int(self.model.context_len), int(np.asarray(contexts[0]).shape[0])),
-            normalize=False,
+            normalize=True,
         )
         return point[:, : int(horizon)], full[:, : int(horizon)]
 

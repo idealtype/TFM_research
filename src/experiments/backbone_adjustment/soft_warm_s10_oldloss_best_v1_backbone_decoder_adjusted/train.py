@@ -20,6 +20,7 @@ import os
 import re
 import sys
 import time
+import traceback
 from collections import OrderedDict
 from pathlib import Path
 
@@ -141,6 +142,14 @@ def validate_same_rows(path_a: Path | str, name_a: str, tensor_a: torch.Tensor,
             "with full-size target files. Re-run v1 recache after the partial-cache fix "
             "or remove the affected COMPACT_DST cache directory."
         )
+
+
+def log_phase_error(horizon: int, phase: str, exc: Exception) -> None:
+    print(
+        f"[train] ERROR h{horizon} phase={phase}: {type(exc).__name__}: {exc}",
+        flush=True,
+    )
+    traceback.print_exc()
 
 
 # ---------------------------------------------------------------------------
@@ -293,6 +302,8 @@ class FourierSynthPayloadCache:
         finite = torch.isfinite(embeddings).all(dim=1) & torch.isfinite(future_n).all(dim=1)
         valid_mask = raw.get("valid_mask")
         if valid_mask is not None:
+            validate_same_rows(group["backbone_path"], "embeddings", embeddings,
+                               group["raw_path"], "valid_mask", valid_mask)
             finite = finite & valid_mask.bool()
         indices = finite.nonzero(as_tuple=True)[0].cpu().numpy()
         if len(indices) == 0:
@@ -306,6 +317,10 @@ class FourierSynthPayloadCache:
             comp = torch.load(comp_path, map_location="cpu", weights_only=False)
             trend_n = comp["trend_n"].float()
             seasonal_n = comp["seasonal_n"].float()
+            validate_same_rows(group["backbone_path"], "embeddings", embeddings,
+                               comp_path, "trend_n", trend_n)
+            validate_same_rows(group["backbone_path"], "embeddings", embeddings,
+                               comp_path, "seasonal_n", seasonal_n)
 
         bases = resolve_basis_for_dir(ds_dir, granularity, horizon, context_len)
         payload = {
@@ -645,6 +660,10 @@ def discover_real_group(cache_root: Path, subset: str, horizon: int) -> dict | N
         return None
     future_payload = torch.load(future_path, map_location="cpu", weights_only=False)
     valid_mask = future_payload.get("valid_mask")
+    if valid_mask is not None:
+        backbone = torch.load(backbone_paths[0], map_location="cpu", weights_only=False)
+        validate_same_rows(backbone_paths[0], "embeddings", backbone["embeddings"],
+                           future_path, "valid_mask", valid_mask)
     if valid_mask is not None and not bool(valid_mask.bool().any()):
         return None
     return {
@@ -682,6 +701,8 @@ class RealPayloadCache:
         finite = torch.isfinite(embeddings).all(dim=1) & torch.isfinite(future_n).all(dim=1)
         valid_mask = futures.get("valid_mask")
         if valid_mask is not None:
+            validate_same_rows(group["backbone_path"], "embeddings", embeddings,
+                               group["future_path"], "valid_mask", valid_mask)
             finite = finite & valid_mask.bool()
         indices = finite.nonzero(as_tuple=True)[0].cpu().numpy()
         if len(indices) == 0:
@@ -788,54 +809,62 @@ def train_horizon(horizon: int, args: argparse.Namespace, device: torch.device) 
 
     history = {}
     started = time.perf_counter()
+    phase = "setup"
 
-    # Phase 1: Fourier synth
-    if not args.skip_fourier and args.fourier_steps > 0:
-        groups = discover_fourier_groups(horizon)
-        if groups:
-            print(f"[fourier] h{horizon}: {len(groups)} groups, {args.fourier_steps} steps", flush=True)
-            history["fourier"] = train_fourier_synth(model, groups, args.fourier_steps,
-                                                      args, horizon, device)
-            ckpt_fourier = ckpt_dir / f"fourier_synth_h{horizon}.pt"
-            save_checkpoint(model, cfg, ckpt_fourier, {
-                "phase": "fourier_synth",
-                "args": to_jsonable(vars(args)),
-                "initial_checkpoint": init_source,
-            })
-        else:
-            print(f"[fourier] h{horizon}: no groups found, skipping", flush=True)
+    try:
+        # Phase 1: Fourier synth
+        if not args.skip_fourier and args.fourier_steps > 0:
+            phase = "fourier_synth"
+            groups = discover_fourier_groups(horizon)
+            if groups:
+                print(f"[fourier] h{horizon}: {len(groups)} groups, {args.fourier_steps} steps", flush=True)
+                history["fourier"] = train_fourier_synth(model, groups, args.fourier_steps,
+                                                          args, horizon, device)
+                ckpt_fourier = ckpt_dir / f"fourier_synth_h{horizon}.pt"
+                save_checkpoint(model, cfg, ckpt_fourier, {
+                    "phase": "fourier_synth",
+                    "args": to_jsonable(vars(args)),
+                    "initial_checkpoint": init_source,
+                })
+            else:
+                print(f"[fourier] h{horizon}: no groups found, skipping", flush=True)
 
-    # Phase 2: non-Fourier synth
-    if not args.skip_nonf and args.nonf_steps > 0:
-        nonf_items = discover_nonf_groups(horizon, args.nonf_stages)
-        if nonf_items:
-            print(f"[nonf] h{horizon}: {len(nonf_items)} groups, {args.nonf_steps} steps", flush=True)
-            history["nonf"] = train_nonf(model, nonf_items, args.nonf_steps, args, horizon, device)
-            ckpt_nonf = ckpt_dir / f"nonf_h{horizon}.pt"
-            save_checkpoint(model, cfg, ckpt_nonf, {
-                "phase": "nonf",
-                "args": to_jsonable(vars(args)),
-            })
-        else:
-            print(f"[nonf] h{horizon}: no groups found, skipping", flush=True)
+        # Phase 2: non-Fourier synth
+        if not args.skip_nonf and args.nonf_steps > 0:
+            phase = "nonf"
+            nonf_items = discover_nonf_groups(horizon, args.nonf_stages)
+            if nonf_items:
+                print(f"[nonf] h{horizon}: {len(nonf_items)} groups, {args.nonf_steps} steps", flush=True)
+                history["nonf"] = train_nonf(model, nonf_items, args.nonf_steps, args, horizon, device)
+                ckpt_nonf = ckpt_dir / f"nonf_h{horizon}.pt"
+                save_checkpoint(model, cfg, ckpt_nonf, {
+                    "phase": "nonf",
+                    "args": to_jsonable(vars(args)),
+                })
+            else:
+                print(f"[nonf] h{horizon}: no groups found, skipping", flush=True)
 
-    # Phase 3: Real data
-    if not args.skip_real and args.real_steps > 0 and args.domain_config.exists():
-        domain_cfg = load_domain_config(args.domain_config)["targets"]
-        all_subsets = sorted({
-            subset
-            for target_cfg in domain_cfg.values()
-            for subset in target_cfg.get("train_subsets", [])
-        } - EVAL_TARGETS)
-        real_groups = [
-            g for subset in all_subsets
-            if (g := discover_real_group(args.lotsa_cache_root, subset, horizon)) is not None
-        ]
-        if real_groups:
-            print(f"[real] h{horizon}: {len(real_groups)} groups, {args.real_steps} steps", flush=True)
-            history["real"] = train_real(model, real_groups, args.real_steps, args, horizon, device)
-        else:
-            print(f"[real] h{horizon}: no groups found, skipping", flush=True)
+        # Phase 3: Real data
+        if not args.skip_real and args.real_steps > 0 and args.domain_config.exists():
+            phase = "real"
+            domain_cfg = load_domain_config(args.domain_config)["targets"]
+            all_subsets = sorted({
+                subset
+                for target_cfg in domain_cfg.values()
+                for subset in target_cfg.get("train_subsets", [])
+            } - EVAL_TARGETS)
+            real_groups = [
+                g for subset in all_subsets
+                if (g := discover_real_group(args.lotsa_cache_root, subset, horizon)) is not None
+            ]
+            if real_groups:
+                print(f"[real] h{horizon}: {len(real_groups)} groups, {args.real_steps} steps", flush=True)
+                history["real"] = train_real(model, real_groups, args.real_steps, args, horizon, device)
+            else:
+                print(f"[real] h{horizon}: no groups found, skipping", flush=True)
+    except Exception as exc:
+        log_phase_error(horizon, phase, exc)
+        raise
 
     save_checkpoint(model, cfg, final_path, {
         "phase": "complete",
@@ -869,7 +898,10 @@ def main() -> None:
             result["per_horizon"][str(horizon)] = train_horizon(int(horizon), args, device)
         except Exception as exc:
             print(f"[train] ERROR h{horizon}: {exc}", flush=True)
-            result["per_horizon"][str(horizon)] = {"error": str(exc)}
+            result["per_horizon"][str(horizon)] = {
+                "error": str(exc),
+                "error_type": type(exc).__name__,
+            }
         with (args.results_root / "train_result_partial.json").open("w") as f:
             json.dump(to_jsonable(result), f, indent=2)
 

@@ -112,6 +112,19 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def validate_same_rows(path_a: Path | str, name_a: str, tensor_a: torch.Tensor,
+                       path_b: Path | str, name_b: str, tensor_b: torch.Tensor) -> None:
+    rows_a = int(tensor_a.shape[0])
+    rows_b = int(tensor_b.shape[0])
+    if rows_a != rows_b:
+        raise ValueError(
+            f"Row mismatch between cached tensors: {name_a} rows={rows_a} ({path_a}) "
+            f"vs {name_b} rows={rows_b} ({path_b}). "
+            "This usually means a partial/stale v1 cache mixed compact backbone files "
+            "with full-size target files. Reuse a matching compact cache or recache this dataset."
+        )
+
+
 class FineMaskRealDataset(Dataset):
     def __init__(self, cache_dir: Path, horizon: int, samples_per_dataset: int, seed: int,
                  fallback_freq: str = "", dataset_name: str = "", real_root: Path = DEFAULT_REAL_ROOT,
@@ -137,6 +150,12 @@ class FineMaskRealDataset(Dataset):
         self.mu = self.backbone["mu"].float()
         self.sigma = self.backbone["sigma"].float()
         self.future_n = self.futures["futures_n"].float()
+        validate_same_rows(self.backbone_path, "embeddings", self.embeddings,
+                           self.future_path, "futures_n", self.future_n)
+        validate_same_rows(self.backbone_path, "embeddings", self.embeddings,
+                           self.backbone_path, "mu", self.mu)
+        validate_same_rows(self.backbone_path, "embeddings", self.embeddings,
+                           self.backbone_path, "sigma", self.sigma)
         self.context_len = int(self.backbone.get("context_len", 512))
         self.freq = str(
             self.backbone.get("frequency")
@@ -150,6 +169,8 @@ class FineMaskRealDataset(Dataset):
         valid_mask = self.futures.get("valid_mask")
         finite = torch.isfinite(self.embeddings).all(dim=1) & torch.isfinite(self.future_n).all(dim=1)
         if valid_mask is not None:
+            validate_same_rows(self.backbone_path, "embeddings", self.embeddings,
+                               self.future_path, "valid_mask", valid_mask)
             finite = finite & valid_mask.bool()
         self.indices = select_indices(finite, self.embeddings.shape[0], samples_per_dataset, seed)
         if not self.indices:
@@ -221,8 +242,12 @@ class FineMaskRealDataset(Dataset):
         if raw_df is not None:
             contexts = []
             numeric_cols = [c for c in raw_df.columns if c != "date"]
+            if not numeric_cols:
+                return None
             col_ids = self.backbone.get("col_ids", numeric_cols)
             win_starts = self.backbone.get("win_starts")
+            if win_starts is None:
+                return None
             for local_idx in local_indices.tolist():
                 col = col_ids[int(local_idx)]
                 if col not in raw_df.columns:
@@ -385,7 +410,7 @@ def evaluate_dataset(model, tfm_model, dataset: FineMaskRealDataset, batch_size:
         if tfm_model is not None:
             contexts_np = dataset.raw_contexts_for_local_indices(batch["source_idx"])
             if contexts_np is not None:
-                point_forecast, _ = tfm_model.forecast(dataset.horizon, [x for x in contexts_np])
+                point_forecast, _ = tfm_model.forecast(dataset.horizon, [x for x in contexts_np], dataset.freq)
                 tfm_pred = torch.as_tensor(point_forecast, dtype=torch.float32, device=device)
                 mu = dataset.mu.index_select(0, batch["source_idx"]).to(device)
                 sigma = dataset.sigma.index_select(0, batch["source_idx"]).to(device)

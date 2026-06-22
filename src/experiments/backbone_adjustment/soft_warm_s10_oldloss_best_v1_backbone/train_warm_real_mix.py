@@ -16,6 +16,7 @@ import argparse
 import json
 import os
 import time
+import traceback
 from pathlib import Path
 
 import torch
@@ -97,6 +98,15 @@ def set_residual_only_trainable(model: FuncDecModel) -> None:
 
 def trainable_params(model: FuncDecModel) -> list[torch.nn.Parameter]:
     return [p for p in model.parameters() if p.requires_grad]
+
+
+def log_phase_error(horizon: int, phase: str, exc: Exception) -> None:
+    print(
+        f"[warm-real-mix] ERROR h{horizon} phase={phase}: "
+        f"{type(exc).__name__}: {exc}",
+        flush=True,
+    )
+    traceback.print_exc()
 
 
 def discover_real_groups(args: argparse.Namespace, horizon: int) -> list[dict]:
@@ -303,52 +313,61 @@ def train_horizon(horizon: int, args: argparse.Namespace, device: torch.device) 
 
     started = time.perf_counter()
     history: dict[str, list[dict]] = {}
+    phase = "discover_groups"
 
-    synth_groups = base.discover_fourier_groups(horizon)
-    real_groups = discover_real_groups(args, horizon)
-    print(
-        f"[warm-real-mix] h{horizon}: synth_groups={len(synth_groups)} real_groups={len(real_groups)}",
-        flush=True,
-    )
-
-    if synth_groups and args.fourier_warmup_steps > 0:
-        print(f"[warmup-fourier] h{horizon}: {args.fourier_warmup_steps} steps", flush=True)
-        history["fourier_warmup"] = base.train_fourier_synth(
-            model, synth_groups, args.fourier_warmup_steps, args, horizon, device
-        )
-        save_checkpoint(model, cfg, ckpt_dir / f"fourier_warm_h{horizon}.pt", {
-            "phase": "fourier_warmup",
-            "args": to_jsonable(vars(args)),
-            "initial_checkpoint": init_source,
-        })
-
-    if not real_groups:
-        raise RuntimeError(f"No real training groups found for h{horizon}")
-
-    if args.mixed_steps > 0:
+    try:
+        synth_groups = base.discover_fourier_groups(horizon)
+        real_groups = discover_real_groups(args, horizon)
         print(
-            f"[mixed-full] h{horizon}: {args.mixed_steps} steps, synth_interval={args.synth_interval}",
+            f"[warm-real-mix] h{horizon}: synth_groups={len(synth_groups)} real_groups={len(real_groups)}",
             flush=True,
         )
-        history["mixed_full"] = train_mixed_full(
-            model, real_groups, synth_groups, args.mixed_steps, args, horizon, device
-        )
-        save_checkpoint(model, cfg, ckpt_dir / f"mixed_full_h{horizon}.pt", {
-            "phase": "mixed_full",
-            "args": to_jsonable(vars(args)),
-            "initial_checkpoint": init_source,
-        })
 
-    if args.residual_steps > 0:
-        print(f"[residual-only] h{horizon}: {args.residual_steps} steps", flush=True)
-        history["residual_only"] = train_residual_only(
-            model, real_groups, args.residual_steps, args, horizon, device
-        )
-        save_checkpoint(model, cfg, ckpt_dir / f"residual_only_h{horizon}.pt", {
-            "phase": "residual_only",
-            "args": to_jsonable(vars(args)),
-            "initial_checkpoint": init_source,
-        })
+        if synth_groups and args.fourier_warmup_steps > 0:
+            phase = "fourier_warmup"
+            print(f"[warmup-fourier] h{horizon}: {args.fourier_warmup_steps} steps", flush=True)
+            history["fourier_warmup"] = base.train_fourier_synth(
+                model, synth_groups, args.fourier_warmup_steps, args, horizon, device
+            )
+            save_checkpoint(model, cfg, ckpt_dir / f"fourier_warm_h{horizon}.pt", {
+                "phase": "fourier_warmup",
+                "args": to_jsonable(vars(args)),
+                "initial_checkpoint": init_source,
+            })
+
+        phase = "validate_real_groups"
+        if not real_groups:
+            raise RuntimeError(f"No real training groups found for h{horizon}")
+
+        if args.mixed_steps > 0:
+            phase = "mixed_full"
+            print(
+                f"[mixed-full] h{horizon}: {args.mixed_steps} steps, synth_interval={args.synth_interval}",
+                flush=True,
+            )
+            history["mixed_full"] = train_mixed_full(
+                model, real_groups, synth_groups, args.mixed_steps, args, horizon, device
+            )
+            save_checkpoint(model, cfg, ckpt_dir / f"mixed_full_h{horizon}.pt", {
+                "phase": "mixed_full",
+                "args": to_jsonable(vars(args)),
+                "initial_checkpoint": init_source,
+            })
+
+        if args.residual_steps > 0:
+            phase = "residual_only"
+            print(f"[residual-only] h{horizon}: {args.residual_steps} steps", flush=True)
+            history["residual_only"] = train_residual_only(
+                model, real_groups, args.residual_steps, args, horizon, device
+            )
+            save_checkpoint(model, cfg, ckpt_dir / f"residual_only_h{horizon}.pt", {
+                "phase": "residual_only",
+                "args": to_jsonable(vars(args)),
+                "initial_checkpoint": init_source,
+            })
+    except Exception as exc:
+        log_phase_error(horizon, phase, exc)
+        raise
 
     save_checkpoint(model, cfg, final_path, {
         "phase": "complete",
@@ -390,7 +409,10 @@ def main() -> None:
             result["per_horizon"][str(horizon)] = train_horizon(int(horizon), args, device)
         except Exception as exc:
             print(f"[warm-real-mix] ERROR h{horizon}: {exc}", flush=True)
-            result["per_horizon"][str(horizon)] = {"error": str(exc)}
+            result["per_horizon"][str(horizon)] = {
+                "error": str(exc),
+                "error_type": type(exc).__name__,
+            }
         with (args.results_root / "train_result_partial.json").open("w") as f:
             json.dump(to_jsonable(result), f, indent=2)
 

@@ -47,6 +47,13 @@ DEFAULT_DST_DATA_ROOT = Path("/tmp/data_v1_backbone")
 DEFAULT_REAL_EVAL_ROOT = Path("/workspace/data/real_eval_lot_ett")
 DEFAULT_REAL_EVAL_DST_ROOT = Path("/tmp/real_eval_lot_ett_v1_backbone")
 DEFAULT_CHECKPOINT_PATH = Path("/tmp/timesfm-1.0-200m-pytorch/torch_model.ckpt")
+DEFAULT_EXP_DIR = (
+    REPO_ROOT
+    / "src"
+    / "experiments"
+    / "backbone_adjustment"
+    / "soft_warm_s10_oldloss_best_v1_backbone"
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -77,6 +84,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--real_eval_root", type=Path, default=DEFAULT_REAL_EVAL_ROOT)
     parser.add_argument("--real_eval_dst_root", type=Path, default=DEFAULT_REAL_EVAL_DST_ROOT)
     parser.add_argument("--skip_real_eval_cache", action="store_true")
+    parser.add_argument("--exp_dir", type=Path, default=DEFAULT_EXP_DIR,
+                        help="v1 backbone experiment directory whose train.py defines the schedule.")
     return parser.parse_args()
 
 
@@ -349,7 +358,7 @@ def copy_synth_group_v1(ds_dir_s: str, indices_s: set[int], src_root: Path, dst_
     elif backbone_paths:
         print(f"[v1 reuse] {ds_dir.name} backbone already encoded; refreshing target files", flush=True)
     for paths, keys in [
-        (sorted(ds_dir.glob("raw_futures_h*.pt")), ["futures_n"]),
+        (sorted(ds_dir.glob("raw_futures_h*.pt")), ["futures_n", "valid_mask"]),
         (sorted(ds_dir.glob("component_targets_h*.pt")), ["trend_n", "seasonal_n"]),
     ]:
         for path in paths:
@@ -358,17 +367,25 @@ def copy_synth_group_v1(ds_dir_s: str, indices_s: set[int], src_root: Path, dst_
             dst = compact.dst_for(path, src_root, dst_root)
             dst.parent.mkdir(parents=True, exist_ok=True)
             torch.save(out, dst)
+    coeff_paths = sorted(ds_dir.glob("seasonal_coefficients*.pt"))
+    for path in coeff_paths:
+        payload = torch.load(path, map_location="cpu", weights_only=False)
+        out = compact._slice_tensor_dict(payload, idx)
+        dst = compact.dst_for(path, src_root, dst_root)
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        torch.save(out, dst)
     sliced = (
         set(ds_dir.glob("backbone_emb_c*_h*_stride1.pt"))
         | set(ds_dir.glob("raw_futures_h*.pt"))
         | set(ds_dir.glob("component_targets_h*.pt"))
+        | set(coeff_paths)
     )
     for path in sorted(p for p in ds_dir.iterdir() if p.is_file() and p not in sliced):
         copy_file(path, compact.dst_for(path, src_root, dst_root))
 
 
 def prepare_train_cache(args: argparse.Namespace, encoder: TimesFmV1Encoder) -> None:
-    base = compact.import_nogate_train(args.src_data_root)
+    base = compact.import_experiment_train(args.src_data_root, args.exp_dir)
     plan = compact.simulate_schedule(base, args)
     compact.print_row_summary(plan)
     args.dst_data_root.mkdir(parents=True, exist_ok=True)
@@ -528,6 +545,7 @@ def main() -> None:
     args.src_data_root = args.src_data_root.resolve()
     args.dst_data_root = args.dst_data_root.resolve()
     args.domain_config = args.domain_config.resolve()
+    args.exp_dir = args.exp_dir.resolve()
     args.real_eval_root = args.real_eval_root.resolve()
     args.real_eval_dst_root = args.real_eval_dst_root.resolve()
     if args.fourier_batch_size is None:
@@ -542,6 +560,8 @@ def main() -> None:
         raise SystemExit(f"src_data_root not found: {args.src_data_root}")
     if not args.lotsa_cache_root.exists():
         raise SystemExit(f"lotsa_cache_root not found: {args.lotsa_cache_root}")
+    if not args.exp_dir.exists():
+        raise SystemExit(f"exp_dir not found: {args.exp_dir}")
     if args.checkpoint_path.exists():
         print(f"[v1] checkpoint={args.checkpoint_path}", flush=True)
     else:

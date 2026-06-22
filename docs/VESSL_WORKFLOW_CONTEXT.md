@@ -123,6 +123,33 @@ vesslctl volume download objvol-edwuqaa94ii3 \
 
 Downloaded files land in the local `results/` folder (gitignored, only `.gitkeep` is tracked).
 
+## GPU Utilization — Known Bottleneck and Fix
+
+현재 학습 루프는 **매 스텝마다 CPU→GPU 전송**이 발생해 GPU가 유휴 상태가 됩니다.
+
+병목 위치 (`train.py` / `sample_real_batch` + `expand_bases`):
+- `numpy.random.choice` → CPU 인덱싱 → CPU 텐서 → GPU 전송 (embeddings, future_n)
+- `expand_bases()`: Fourier basis를 매 스텝 CPU→GPU 전송 (group당 고정값인데도)
+
+**Fix**: `RealPayloadCache.load()` 시점에 모든 텐서를 GPU로 이동.
+
+```python
+# RealPayloadCache.load() 수정
+embeddings = backbone["embeddings"].float().to(device)   # 한 번만
+future_n   = futures["futures_n"].float().to(device)     # 한 번만
+bases      = {k: v.to(device) for k, v in resolve_basis_for_real(group).items()}
+```
+
+메모리: 20 groups × ~50K samples × 512dim × float32 ≈ 2GB/horizon × 4 = 8GB → A100 80GB 여유.  
+적용 대상: `soft_mask`, `nogate_softmask`, `hard_mask`, `deconder_adjustment` 모두.  
+**다음 실험부터 반드시 적용.**
+
+## Log 출력 순서에 대한 주의
+
+`run_horizon() | sed "s/^/[h${H}] /"` 구조에서 sed 파이프가 출력을 블록 버퍼링합니다.  
+실제로는 4개 horizon이 병렬 실행 중이지만, 로그상에서는 각 horizon의 출력이 한꺼번에 덤프되어  
+마치 순차 실행처럼 보입니다. residual-only 단계처럼 로그 빈도가 낮은 구간만 실시간으로 확인 가능합니다.
+
 ## Pending Work
 
 - Data generation and TimesFM cache generation are intentionally paused.

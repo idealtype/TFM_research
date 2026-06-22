@@ -468,7 +468,20 @@ def _slice_tensor_dict(payload: dict, idx: torch.Tensor) -> dict:
     (keys → dicts of tensors), which covers seasonal_coefficients files that
     store per-family tensors either at the top level or under a nested key.
     """
-    n = payload[next(iter(payload))].shape[0] if payload else 0
+    n = 0
+    if payload:
+        for val in payload.values():
+            if torch.is_tensor(val) and val.dim() >= 1:
+                n = int(val.shape[0])
+                break
+            if isinstance(val, dict):
+                nested = next(
+                    (v for v in val.values() if torch.is_tensor(v) and v.dim() >= 1),
+                    None,
+                )
+                if nested is not None:
+                    n = int(nested.shape[0])
+                    break
     out: dict = {}
     for key, val in payload.items():
         if torch.is_tensor(val) and val.dim() >= 1 and val.shape[0] == n:

@@ -42,6 +42,14 @@ fi
 
 if [[ "${SKIP_RECACHE:-0}" == "1" ]]; then
   echo "[skip] SKIP_RECACHE=1: reusing existing cache at $COMPACT_DST"
+  if [[ ! -d "$COMPACT_DST" ]]; then
+    echo "[error] COMPACT_DST does not exist: $COMPACT_DST" >&2
+    exit 1
+  fi
+  if [[ ! -d "$REAL_EVAL_DST" ]]; then
+    echo "[error] REAL_EVAL_DST does not exist: $REAL_EVAL_DST" >&2
+    exit 1
+  fi
 else
   python "$REPO_ROOT/src/data_prep/prepare_v1_backbone_data.py" \
     --src_data_root "$DATA_ROOT" \
@@ -49,6 +57,7 @@ else
     --lotsa_cache_root "$DATA_ROOT/data_lotsa/lotsa_cache" \
     --real_eval_root "$DATA_ROOT/real_eval_lot_ett" \
     --real_eval_dst_root "$REAL_EVAL_DST" \
+    --exp_dir "$REPO_ROOT/$EXP_DIR" \
     --v1_src "$V1_REPO_DIR/v1/src" \
     --checkpoint_path "$V1_CKPT_PATH" \
     --hf_cache_dir "$HF_CACHE_DIR" \
