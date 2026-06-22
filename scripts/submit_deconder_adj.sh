@@ -97,7 +97,7 @@ mkdir -p /tmp/data
 cp -r /workspace/data/${COMPACT_POOL}/. /tmp/data/
 echo "[pre-cache] Done: \$(du -sh /tmp/data | cut -f1)"
 echo "[validate] Checking compact pool integrity..."
-python /tmp/tfm_project/src/data_prep/validate_compact_pool.py /tmp/data
+python /tmp/tfm_project/src/data_prep/validate_compact_pool.py /tmp/data/synthetic/func_dec_syn_cent_fourier_all_train_cache_10_4_2_8
 echo "[validate] OK"
 
 export DATA_ROOT=/tmp/data

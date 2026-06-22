@@ -165,6 +165,15 @@ def main() -> None:
     ds_dirs: set[Path] = set()
     for h in HORIZONS:
         for p in pool_root.rglob(f"backbone_emb_c*_h{h}_stride1.pt"):
+            # The compact pool also contains real train/eval caches whose
+            # backbone files use the same naming convention. Only validate
+            # Fourier synthetic cache directories here.
+            if (
+                "synthetic" not in p.parts
+                and not (p.parent / f"raw_futures_h{h}.pt").exists()
+                and find_coeff_path(p.parent, h) is None
+            ):
+                continue
             ds_dirs.add(p.parent)
 
     if not ds_dirs:
