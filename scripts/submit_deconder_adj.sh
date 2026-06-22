@@ -199,6 +199,7 @@ PY
 log "DONE: merge checkpoints"
 
 log "START: real evaluation"
+export DATA_ROOT=/workspace/data
 DEVICE=\$DEVICE python -u "${EXP_DIR}/eval_real_parallel.py" \\
   --checkpoint_root "${RESULTS}" \\
   --results_root "${RESULTS}/real_lot_ett" \\
