@@ -33,6 +33,8 @@ if [[ ! -d "$V1_REPO_DIR/.git" ]]; then
   git clone --depth 1 https://github.com/idealtype/timesfm_origin.git "$V1_REPO_DIR"
 fi
 
+python -c "import utilsforecast" 2>/dev/null || pip install --quiet utilsforecast
+
 if [[ ! -f "$V1_CKPT_PATH" ]]; then
   python - "$V1_CKPT_DIR" <<'PY'
 import sys
