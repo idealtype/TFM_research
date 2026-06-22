@@ -151,6 +151,20 @@ def parse_args() -> argparse.Namespace:
     return args
 
 
+def validate_same_rows(path_a: Path | str, name_a: str, tensor_a: torch.Tensor,
+                       path_b: Path | str, name_b: str, tensor_b: torch.Tensor) -> None:
+    rows_a = int(tensor_a.shape[0])
+    rows_b = int(tensor_b.shape[0])
+    if rows_a != rows_b:
+        raise ValueError(
+            f"Row mismatch between cached tensors: {name_a} rows={rows_a} ({path_a}) "
+            f"vs {name_b} rows={rows_b} ({path_b}). "
+            "This usually means a stale/partial cache mixed compact backbone files "
+            "with full-size target files. Reuse a matching cache pair or recache the "
+            "affected subset/horizon."
+        )
+
+
 # ---------------------------------------------------------------------------
 # Model loading
 # ---------------------------------------------------------------------------
@@ -778,17 +792,24 @@ def discover_real_group(cache_root: Path, subset: str, horizon: int) -> dict | N
     backbone_paths = sorted(cache_dir.glob(f"backbone_emb_c{context_len}_*.pt"))
     if not backbone_paths:
         return None
+    backbone_path = backbone_paths[0]
     future_payload = torch.load(future_path, map_location="cpu", weights_only=False)
+    backbone_payload = torch.load(backbone_path, map_location="cpu", weights_only=False)
+    embeddings = backbone_payload["embeddings"]
+    future_n = future_payload["futures_n"]
+    validate_same_rows(backbone_path, "embeddings", embeddings, future_path, "futures_n", future_n)
     valid_mask = future_payload.get("valid_mask")
-    if valid_mask is not None and not bool(valid_mask.bool().any()):
-        return None
+    if valid_mask is not None:
+        validate_same_rows(backbone_path, "embeddings", embeddings, future_path, "valid_mask", valid_mask)
+        if not bool(valid_mask.bool().any()):
+            return None
     return {
         "subset": subset,
         "cache_dir": str(cache_dir),
         "context_len": context_len,
         "freq": freq,
         "horizon": int(horizon),
-        "backbone_path": str(backbone_paths[0]),
+        "backbone_path": str(backbone_path),
         "future_path": str(future_path),
     }
 
@@ -812,9 +833,13 @@ class RealPayloadCache:
         futures = torch.load(group["future_path"], map_location="cpu", weights_only=False)
         embeddings = backbone["embeddings"].float()
         future_n = futures["futures_n"].float()
+        validate_same_rows(group["backbone_path"], "embeddings", embeddings,
+                           group["future_path"], "futures_n", future_n)
         finite = torch.isfinite(embeddings).all(dim=1) & torch.isfinite(future_n).all(dim=1)
         valid_mask = futures.get("valid_mask")
         if valid_mask is not None:
+            validate_same_rows(group["backbone_path"], "embeddings", embeddings,
+                               group["future_path"], "valid_mask", valid_mask)
             finite = finite & valid_mask.bool()
         indices = finite.nonzero(as_tuple=True)[0].cpu().numpy()
         if len(indices) == 0:

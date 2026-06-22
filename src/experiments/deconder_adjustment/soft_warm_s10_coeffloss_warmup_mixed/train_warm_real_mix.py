@@ -117,10 +117,16 @@ def discover_real_groups(args: argparse.Namespace, horizon: int) -> list[dict]:
         for target_cfg in domain_cfg.values()
         for subset in target_cfg.get("train_subsets", [])
     } - base.EVAL_TARGETS)
-    return [
-        group for subset in all_subsets
-        if (group := base.discover_real_group(args.lotsa_cache_root, subset, horizon)) is not None
-    ]
+    groups = []
+    for subset in all_subsets:
+        try:
+            group = base.discover_real_group(args.lotsa_cache_root, subset, horizon)
+        except ValueError as exc:
+            print(f"[warm-real-mix] skip h{horizon} subset={subset}: {exc}", flush=True)
+            continue
+        if group is not None:
+            groups.append(group)
+    return groups
 
 
 def train_mixed_full(model: FuncDecModel, real_groups: list[dict], synth_groups: list[dict],
