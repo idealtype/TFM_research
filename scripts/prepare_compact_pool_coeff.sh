@@ -17,7 +17,7 @@ set -euo pipefail
 SRC_COMMIT="$(git rev-parse HEAD)"
 IMAGE="ghcr.io/idealtype/tfm-research:1a9556b27f678fdc3859e1e75b9c373160b49caa"
 VOLUME="objvol-edwuqaa94ii3:/workspace/data"
-RESOURCE="resourcespec-grlxx3knwzps"
+RESOURCE="resourcespec-a100x1"
 
 # ---------- training config (must match coeffloss job scripts) ----------
 BATCH_SIZE=1024

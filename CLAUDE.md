@@ -130,7 +130,9 @@ horizons             = 96 192 336 720 (병렬)
 
 - **이미지**: `ghcr.io/idealtype/tfm-research:<commit>` — Dockerfile/requirements 변경 시에만 재빌드
 - **데이터 볼륨**: `objvol-edwuqaa94ii3` → `/workspace/data`
-- **GPU Job**: `resourcespec-a100x1` (A100 80GB), **CPU Job**: `resourcespec-grlxx3knwzps`
+- **GPU Job**: `resourcespec-a100x1` (A100 80GB), **CPU Job**: `resourcespec-a100cpu` (cluster-betelgeuse)
+- **CPU Job 주의**: `resourcespec-grlxx3knwzps` (cluster-e25pumfmj51e) — 로그 미출력 문제 확인됨, 사용 금지
+- **prepare_compact_pool_coeff.sh**: CPU-only 13GB로 OOM 발생 (lcl/london_smart_meters 등 대형 LOTSA backbone이 수 GB). `resourcespec-a100x1` (119GB) 사용 고정
 - **결과 경로**: `/workspace/data/results/<exp_type>/<HHmm>_<run_tag>/`
 - **Job 제출**: `./scripts/vessl_submit.sh --exp <type> --run <tag> --mode train_eval`
 

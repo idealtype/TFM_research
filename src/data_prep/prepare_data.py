@@ -199,16 +199,23 @@ class PlanIndexCache:
         if key in self._cache:
             return {"indices": self._cache[key]}
 
+        # Load backbone and extract finiteness without .float() conversion to halve peak RAM.
+        # Large LOTSA backbones (lcl, london_smart_meters, etc.) can be several GB;
+        # calling .float() on a float16 tensor doubles the allocation momentarily.
         backbone = torch.load(group["backbone_path"], map_location="cpu", weights_only=False)
+        embeddings = backbone["embeddings"]
+        finite = torch.isfinite(embeddings).all(dim=1)
+        del backbone, embeddings
+        gc.collect()
+
         futures = torch.load(group["future_path"], map_location="cpu", weights_only=False)
-        embeddings = backbone["embeddings"].float()
-        future_n = futures["futures_n"].float()
-        finite = torch.isfinite(embeddings).all(dim=1) & torch.isfinite(future_n).all(dim=1)
+        future_n = futures["futures_n"]
+        finite = finite & torch.isfinite(future_n).all(dim=1)
         valid_mask = futures.get("valid_mask")
         if valid_mask is not None:
             finite = finite & valid_mask.bool()
         indices = finite.nonzero(as_tuple=True)[0].cpu().numpy()
-        del backbone, futures, embeddings, future_n, finite
+        del futures, future_n, finite
         gc.collect()
 
         if len(indices) == 0:
