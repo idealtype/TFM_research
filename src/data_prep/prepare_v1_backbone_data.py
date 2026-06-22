@@ -483,7 +483,13 @@ def recache_eval_backbone(cache_dir: Path, real_root: Path, dst_root: Path, enco
         ], axis=0)
     elif (cache_dir / "sample_indices.pt").exists():
         sample = torch.load(cache_dir / "sample_indices.pt", map_location="cpu", weights_only=False)
-        source_backbone = torch.load(sample["source_backbone"], map_location="cpu", weights_only=False)
+        _src_bb_path = Path(str(sample["source_backbone"]))
+        _old_prefix = Path("/home/sia2/project/data")
+        try:
+            _src_bb_path = DEFAULT_SRC_DATA_ROOT / _src_bb_path.relative_to(_old_prefix)
+        except ValueError:
+            pass
+        source_backbone = torch.load(_src_bb_path, map_location="cpu", weights_only=False)
         source_indices = sample["source_indices"].long()
         series_ids = source_backbone["series_ids"]
         win_starts = source_backbone["win_starts"]
